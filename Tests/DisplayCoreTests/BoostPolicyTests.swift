@@ -4,14 +4,14 @@ import Testing
 private func decision(_ requested: Double = 1.25, enabled: Bool = true,
                       validated: Bool = true, builtIn: Bool = true, awake: Bool = true,
                       thermal: BoostPolicy.Thermal = .nominal, headroom: Double = 2) -> BoostPolicy.Decision {
-    BoostPolicy().evaluate(requested: requested, enabled: enabled, rendererValidated: validated,
+    BoostPolicy().evaluate(requested: requested, enabled: enabled, rendererReady: validated,
                            builtIn: builtIn, awake: awake, thermal: thermal, currentHeadroom: headroom)
 }
 
-@Test func unvalidatedRendererCannotBoost() {
+@Test func rendererUnavailableCannotBoost() {
     let result = decision(validated: false)
     #expect(result.multiplier == 1)
-    #expect(result.block == .unvalidatedRenderer)
+    #expect(result.block == .rendererUnavailable)
 }
 
 @Test func neverExceedsCurrentHeadroomOrCeiling() {

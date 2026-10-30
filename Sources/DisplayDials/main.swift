@@ -1,10 +1,11 @@
 import AppKit
 import DisplayCore
 import NightShiftBridge
+import Darwin
 
 enum AppIdentity {
     static let name = "Display Dials"
-    static let version = "0.1.0"
+    static let version = "0.2.0"
 }
 
 @MainActor
@@ -14,13 +15,18 @@ func displaySnapshot() -> [[String: Any]] {
         return ["name": screen.localizedName,
                 "builtIn": CGDisplayIsBuiltin(id) != 0,
                 "currentEDR": screen.maximumExtendedDynamicRangeColorComponentValue,
-                "potentialEDR": screen.maximumPotentialExtendedDynamicRangeColorComponentValue]
+                "potentialEDR": screen.maximumPotentialExtendedDynamicRangeColorComponentValue,
+                "brightnessReadback": BrightnessReadback.values(for: id)]
     }
 }
 
 @MainActor
 final class PanelController: NSViewController {
     let warmth = DDWarmthClient()
+    let boost = BoostController()
+    private let boostSwitch = NSSwitch()
+    private let boostSlider = NSSlider(value: 1.1, minValue: 1, maxValue: 1.25, target: nil, action: nil)
+    private let boostValue = NSTextField(labelWithString: "×1.10")
     private let screenLabel = NSTextField(wrappingLabelWithString: "")
     private let warmthToggle = NSSwitch()
     private let warmthSlider = NSSlider(value: 0.5, minValue: 0, maxValue: 1, target: nil, action: nil)
@@ -31,7 +37,7 @@ final class PanelController: NSViewController {
     private var timer: Timer?
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 460))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 500))
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -52,14 +58,16 @@ final class PanelController: NSViewController {
         stack.addArrangedSubview(screenLabel)
         stack.addArrangedSubview(separator())
 
-        let boostSwitch = NSSwitch()
-        boostSwitch.isEnabled = false
-        boostSwitch.setAccessibilityLabel("Буст яркости — в разработке")
-        stack.addArrangedSubview(row("Буст яркости", control: boostSwitch))
-        let boostSlider = NSSlider(value: 1, minValue: 1, maxValue: 1.25, target: nil, action: nil)
-        boostSlider.isEnabled = false
-        boostSlider.setAccessibilityLabel("Усиление яркости — недоступно в этой сборке")
+        boostSwitch.target = self
+        boostSwitch.action = #selector(toggleBoost)
+        boostSwitch.setAccessibilityLabel("Буст яркости — тест на 30 секунд")
+        stack.addArrangedSubview(row("Буст · эксперимент", control: boostSwitch))
+        boostSlider.target = self
+        boostSlider.action = #selector(changeBoost)
+        boostSlider.isContinuous = false
+        boostSlider.setAccessibilityLabel("Коэффициент усиления яркости")
         stack.addArrangedSubview(boostSlider)
+        stack.addArrangedSubview(row("Усиление", control: boostValue))
         boostNote.font = .systemFont(ofSize: 11)
         boostNote.textColor = .secondaryLabelColor
         stack.addArrangedSubview(boostNote)
@@ -91,6 +99,7 @@ final class PanelController: NSViewController {
         for item in stack.arrangedSubviews {
             item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
+        boost.onChange = { [weak self] in self?.refreshBoost() }
         refresh()
     }
 
@@ -111,25 +120,7 @@ final class PanelController: NSViewController {
     func refresh() {
         let screen = displaySnapshot().first { ($0["builtIn"] as? Bool) == true }
         screenLabel.stringValue = screen?["name"] as? String ?? "Встроенный экран не найден"
-        let headroom = screen?["currentEDR"] as? Double ?? 1
-        let thermal: BoostPolicy.Thermal
-        switch ProcessInfo.processInfo.thermalState {
-        case .nominal: thermal = .nominal
-        case .fair: thermal = .fair
-        case .serious: thermal = .serious
-        case .critical: thermal = .critical
-        @unknown default: thermal = .unknown
-        }
-        let gate = BoostPolicy().evaluate(requested: 1.25, enabled: true, rendererValidated: false,
-                                         builtIn: screen != nil, awake: true, thermal: thermal,
-                                         currentHeadroom: headroom)
-        let status: String
-        switch gate.block {
-        case .thermalPressure: status = "Нагрузка на систему повышена."
-        case .unsupportedDisplay: status = "Нужен поддерживаемый встроенный экран."
-        default: status = "Модуль усиления ещё не подключён."
-        }
-        boostNote.stringValue = "Буст недоступен в этой сборке. \(status)"
+        refreshBoost()
 
         let state = warmth.readState()
         let available = state?["available"]?.boolValue == true
@@ -145,6 +136,37 @@ final class PanelController: NSViewController {
         warmthNote.stringValue = available
             ? "Используется системный Night Shift. Расписание macOS сохраняется."
             : "Night Shift недоступен. \(warmth.diagnostic)."
+    }
+
+    private func refreshBoost() {
+        let running = boost.running
+        let available = boost.unavailableReason
+        boostSwitch.state = running && boost.report.phase != "off" ? .on : .off
+        boostSwitch.isEnabled = running || available == nil
+        boostSlider.isEnabled = running || available == nil
+        if boost.report.phase == "active" {
+            boostValue.stringValue = String(format: "×%.2f · %d с", boost.report.factor, boost.report.remaining)
+            boostNote.stringValue = "Тест работает. Выключится автоматически. Коэффициент не является измерением яркости в нитах."
+        } else if boost.report.phase == "preparing" && running {
+            boostValue.stringValue = "Подготовка…"
+            boostNote.stringValue = "Ожидаем доступную HDR-яркость. Переключатель останавливает тест."
+        } else {
+            boostValue.stringValue = String(format: "×%.2f", boost.factor)
+            boostNote.stringValue = available ?? (boost.report.reason == nil || boost.report.reason == "manual"
+                ? "Тест на 30 секунд. Повышает нагрев и расход энергии."
+                : BoostPlatform.reason(boost.report.reason))
+        }
+    }
+
+    @objc private func toggleBoost() {
+        if boostSwitch.state == .on { boost.start(); boostSlider.doubleValue = boost.factor }
+        else { boost.stop() }
+        refreshBoost()
+    }
+
+    @objc private func changeBoost() {
+        boost.changeFactor(boostSlider.doubleValue)
+        refreshBoost()
     }
 
     @objc private func toggleWarmth() {
@@ -184,12 +206,14 @@ final class PanelController: NSViewController {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var status: NSStatusItem!
     private let popover = NSPopover()
+    private var panel: PanelController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         let controller = PanelController()
+        panel = controller
         popover.contentViewController = controller
-        popover.contentSize = NSSize(width: 340, height: 460)
+        popover.contentSize = NSSize(width: 340, height: 500)
         popover.behavior = .transient
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = status.button {
@@ -221,6 +245,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        panel?.boost.stop()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !popover.isShown { togglePanel() }
         return false
@@ -237,12 +265,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
-if CommandLine.arguments.contains("--diagnostics") {
+if CommandLine.arguments.contains("--boost-worker") {
+    let worker = BoostWorker()
+    worker.run()
+    withExtendedLifetime(worker) { app.run() }
+} else if CommandLine.arguments.contains("--renderer-check") {
+    let data = try JSONSerialization.data(withJSONObject: HDRRenderer.offscreenCheck(), options: [.prettyPrinted, .sortedKeys])
+    print(String(decoding: data, as: UTF8.self))
+} else if CommandLine.arguments.contains("--controller-check") {
+    // Integration check of the UI controller/IPC path with only a tiny HDR marker.
+    app.setActivationPolicy(.prohibited)
+    let controller = BoostController(triggerOnly: true)
+    var observedActive = false
+    controller.onChange = {
+        if controller.report.phase == "active" { observedActive = true }
+        if !controller.running {
+            let passed = observedActive && controller.report.phase == "off" && controller.report.reason == "manual"
+            print("Controller start/stop: \(passed ? "PASS" : "FAIL")")
+            exit(passed ? 0 : 1)
+        }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { controller.stop() }
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 8) { _exit(74) }
+    controller.start()
+    withExtendedLifetime(controller) { app.run() }
+} else if CommandLine.arguments.contains("--diagnostics") {
     let warmth = DDWarmthClient()
     let result: [String: Any] = [
         "app": AppIdentity.name,
         "version": AppIdentity.version,
-        "boostRenderer": "not implemented; no brightness writes",
+        "boostRenderer": "experimental Metal overlay; 30 second worker lease",
+        "conflictingApps": BoostPlatform.conflictingApps,
+        "sessionActive": BoostPlatform.sessionActive,
         "screens": displaySnapshot(),
         "nightShiftSupported": warmth.supported,
         "nightShiftDiagnostic": warmth.diagnostic,
