@@ -1,73 +1,78 @@
 # Display Dials
 
-Компактное приложение для macOS: теплота экрана и буст яркости в одной панели.
+A compact macOS menu bar app for display warmth and experimental brightness boost.
 
-## Состояние прототипа 0.2.0
+## Prototype status: 0.2.0
 
-- Нативная панель в строке меню, без Dock-окна.
-- Чтение состояния Night Shift, переключатель и ползунок теплоты.
-- Системное расписание Night Shift сохраняется. Изменения применяются через macOS
-  глобально, а не отдельно к каждому монитору, и сохраняются после выхода.
-- Чтение возможностей встроенного экрана и текущего EDR headroom.
-- **Буст — экспериментальный тест на 30 секунд**, только после ручного включения.
-  Metal-слой работает в отдельном процессе; диапазон коэффициента 1.00–1.25,
-  стартовый коэффициент 1.10. Значение 1.00 выключает тест.
-- Коэффициент ограничивается текущим EDR headroom. Снижение доступного запаса
-  не компенсируется автоматическим повышением впоследствии.
-- При нагреве выше nominal, сне, блокировке, смене конфигурации экранов,
-  сбое GPU или потере связи с панелью тест прекращается. Автовозобновления нет.
-- Перед тестом нужно закрыть BetterDisplay, BrightIntosh и Vivid. Это проверка
-  конфликтующих утилит, а не исключения для приложений.
-- Системная яркость, gamma-таблицы и пресеты дисплея не переписываются.
+- A native menu bar panel with no Dock window.
+- Night Shift status, an on/off switch, and a warmth slider.
+- The macOS Night Shift schedule is preserved. Changes apply globally through macOS,
+  rather than per monitor, and persist after the app quits.
+- Read-only queries for built-in display capabilities and current EDR headroom.
+- **Brightness boost is an experimental 30-second trial**, started manually.
+  A Metal overlay runs in a separate process. The multiplier ranges from 1.00 to 1.25
+  and defaults to 1.10. Selecting 1.00 stops the trial.
+- The multiplier is capped by current EDR headroom. If available headroom decreases,
+  the app does not automatically raise the multiplier when headroom recovers.
+- The trial stops when thermal state rises above nominal, the display sleeps, the
+  session locks, display configuration changes, the GPU fails, or communication with
+  the panel is lost. It does not resume automatically.
+- BetterDisplay, BrightIntosh, and Vivid must be closed before a trial. This checks
+  for conflicting utilities; it does not implement application exclusions.
+- System brightness, gamma tables, and display presets are not overwritten.
 
-**Абсолютный прирост яркости относительно исходного режима пока не подтверждён.**
-В пробе правая половина выглядела ярче левой, но пользователь отметил возможное
-затемнение левой стороны. Разделение экрана не отличает эти эффекты. HDR headroom,
-число нарисованных кадров и программные показания яркости не заменяют измерение
-светового выхода. Не считать эту версию готовой заменой буста BetterDisplay.
+**An absolute brightness increase over the original display state has not been confirmed.**
+In a trial, the right half appeared brighter than the left, but the user noted that
+this might reflect dimming of the left half. A split-screen comparison cannot
+separate these effects. HDR headroom, rendered frame counts, and software brightness
+readbacks do not replace light-output measurements. This version is not yet a
+validated replacement for BetterDisplay's brightness boost.
 
-При запуске приложение только читает настройки. Night Shift меняется после
-действия пользователя. Буст всегда запускается выключенным. Серверов и аналитики нет.
+At launch, the app only reads settings. Night Shift changes require user action.
+Brightness boost always starts disabled. There are no servers or analytics.
 
-## Сборка
+## Build
 
-Нужны macOS 13+ и Swift 6+ (Xcode или Command Line Tools). Сторонних зависимостей нет.
+Requires macOS 13+ and Swift 6+ through Xcode or Command Line Tools. There are no
+third-party dependencies.
 
 ```sh
 bash scripts/test.sh
 bash scripts/build-app.sh
-# IPC-проверки без окон и без изменения экрана:
+# IPC checks without windows or display changes:
 python3 scripts/check-worker.py
 ```
 
-Готовый локальный bundle: `~/Library/Developer/DisplayDials/Display Dials.app`.
-Он собирается вне Documents: файловый провайдер этой папки добавляет метаданные,
-нарушающие подпись `.app`. Путь можно изменить через `DISPLAY_DIALS_OUTPUT_DIR`.
-Сборка подписана ad hoc для локального запуска, без нотариализации и автообновления.
-Скрипт тестов учитывает обнаружение макросов Swift Testing в Command Line Tools 27.2.
+The local app bundle is built at `~/Library/Developer/DisplayDials/Display Dials.app`.
+It is built outside Documents because that directory's file provider adds metadata
+that invalidates the app signature. Override the destination with
+`DISPLAY_DIALS_OUTPUT_DIR`. The bundle is ad hoc signed for local use, without
+notarization or automatic updates. The test script works around Swift Testing macro
+plugin discovery in Command Line Tools 27.2.
 
 ```sh
-# Диагностика: только чтение, без изменения экрана.
+# Read-only diagnostics; no display changes.
 swift run DisplayDials --diagnostics
-# Проверка создания UI с немедленным выходом, без записи настроек.
+# Initialize the UI and exit immediately without writing display settings.
 swift run DisplayDials --smoke-test
-# Проверка float-рендеринга на GPU без вывода на экран:
+# Check floating-point GPU rendering without displaying the result.
 swift run DisplayDials --renderer-check
-# Запуск панели из собранного приложения.
+# Open the panel from the built app.
 "$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials"
 ```
 
-## Ограничения
+## Limitations
 
-Night Shift использует private API CoreBrightness. Apple может изменить его в любой
-версии macOS; адаптер проверяет доступность методов и формат данных и отключает
-управление при несовместимости. Это прототип для прямого распространения, не готовая
-заявка в Mac App Store. Одновременное изменение настроек в Shifty и других утилитах
-может привести к конкурирующим изменениям; приложение перечитывает состояние.
+Night Shift uses the private CoreBrightness API. Apple may change it in any macOS
+release. The adapter checks method availability and data formats, disabling controls
+when incompatible. This is a prototype for direct distribution, not a ready-to-submit
+Mac App Store app. Changing settings simultaneously in Shifty or other utilities
+can cause competing updates; Display Dials rereads the system state.
 
-EDR headroom — относительный ресурс HDR-рендеринга, **не измерение нит и не гарантия
-безопасности панели**. Нельзя обещать нулевое влияние повышенной яркости на нагрев
-и старение экрана. Ограничения 1.25 и 30 секунд — параметры эксперимента,
-а не сертифицированные безопасные значения. Постоянного режима пока нет.
+EDR headroom is relative HDR rendering capacity, **not a measurement in nits or a
+guarantee of panel safety**. Increased brightness may affect heat and display aging.
+The 1.25 multiplier and 30-second limit are experimental parameters, not certified
+safe operating values. A continuous mode is not available yet.
 
-Дальнейшие шаги, источники и критерии подключения буста — в [docs/implementation.md](docs/implementation.md).
+See [docs/implementation.md](docs/implementation.md) for implementation details,
+validation results, sources, and the remaining brightness-boost checks.
