@@ -33,7 +33,9 @@ or long-term thermal stability.
 A real system sleep was initiated with `pmset sleepnow`. The worker stopped with
 reason `sleeping` before sleep. The diagnostic then received a real NSWorkspace
 wake notification and verified that Boost remained off. The explicit restart check
-is waiting for the user to unlock the session.
+could not complete: the session remained locked for its 120-second waiting period.
+The diagnostic exited with Boost off. Manual restart after unlock remains to be
+verified; this waiting timeout is diagnostic-only, not a Boost session deadline.
 
 The diagnostic `--sleep-check` enables Boost, waits for an actual NSWorkspace wake
 notification, checks that Boost remains off, waits for unlock, and issues a separate
