@@ -2,7 +2,7 @@
 
 A compact macOS menu bar app for display warmth and experimental brightness boost.
 
-## Prototype status: 0.2.0
+## Prototype status: 0.2.1
 
 - A native menu bar panel with no Dock window.
 - Night Shift status, an on/off switch, and a warmth slider.
@@ -21,12 +21,10 @@ A compact macOS menu bar app for display warmth and experimental brightness boos
   for conflicting utilities; it does not implement application exclusions.
 - System brightness, gamma tables, and display presets are not overwritten.
 
-**An absolute brightness increase over the original display state has not been confirmed.**
-In a trial, the right half appeared brighter than the left, but the user noted that
-this might reflect dimming of the left half. A split-screen comparison cannot
-separate these effects. HDR headroom, rendered frame counts, and software brightness
-readbacks do not replace light-output measurements. This version is not yet a
-validated replacement for BetterDisplay's brightness boost.
+Manual testing has shown a visible effect, but brightness flicker was reported in
+0.2.0. Version 0.2.1 adds a steady rendering cadence, settled-headroom preparation,
+and gradual gain increases. These changes still need visual confirmation on the
+display. Absolute luminance gain has not been measured with an external instrument.
 
 At launch, the app only reads settings. Night Shift changes require user action.
 Brightness boost always starts disabled. There are no servers or analytics.
@@ -60,6 +58,14 @@ swift run DisplayDials --renderer-check
 # Open the panel from the built app.
 "$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials"
 ```
+
+## Trial diagnostics
+
+The latest trial is recorded locally at
+`~/Library/Logs/DisplayDials/latest-boost.jsonl`. It contains status, headroom,
+frame counts, brightness readbacks, and the stop reason/exit status. It records no
+screen content and is not uploaded. Each trial replaces the previous trace; the
+file is capped at approximately 1 MB and readable only by the current user.
 
 ## Limitations
 

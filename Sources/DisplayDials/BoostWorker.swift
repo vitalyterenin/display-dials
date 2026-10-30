@@ -24,7 +24,7 @@ final class BoostWorker: NSObject {
             let bytes = handle.availableData
             Task { @MainActor in self?.receive(bytes) }
         }
-        timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+        timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
         RunLoop.main.add(timer!, forMode: .common)

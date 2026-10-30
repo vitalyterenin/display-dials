@@ -37,6 +37,9 @@ public struct BoostSession: Sendable {
     public static let duration: Double = 30
     public static let preparationLimit: Double = 5
     public static let heartbeatLimit: Double = 1.5
+    public static let minimumPreparation: Double = 1
+    public static let headroomSettleTime: Double = 0.6
+    public static let risePerSecond: Double = 0.1
     public private(set) var phase: Phase = .off
     public private(set) var reason: Stop?
     public private(set) var effective: Double = 1
@@ -44,6 +47,9 @@ public struct BoostSession: Sendable {
     private var ceiling: Double = 1.1
     private var started: Double = 0
     private var heartbeat: Double = 0
+    private var candidate: Double?
+    private var candidateSince: Double = 0
+    private var lastAdjustment: Double = 0
 
     public init() {}
 
@@ -52,6 +58,7 @@ public struct BoostSession: Sendable {
         started = now; heartbeat = now
         requested = min(factor, 1.25); ceiling = requested
         effective = 1; reason = nil; phase = .preparing
+        candidate = nil; candidateSince = now; lastAdjustment = now
     }
 
     public mutating func receive(now: Double, factor: Double) {
@@ -81,15 +88,28 @@ public struct BoostSession: Sendable {
         if !e.supported { stop(.unsupported); return }
         if e.thermal != .nominal { stop(.thermal); return }
         if !e.rendererReady {
+            candidate = nil
             if phase == .active || now - started >= Self.preparationLimit { stop(.renderer) }
             return
         }
         if phase == .preparing {
-            if e.headroom <= 1.01 {
+            guard e.headroom > 1.01 else {
+                candidate = nil
                 if now - started >= Self.preparationLimit { stop(.noHeadroom) }
                 return
             }
+            let next = min(requested, e.headroom)
+            if candidate == nil || abs(next - candidate!) > 0.005 {
+                candidate = next; candidateSince = now
+            }
+            guard now - started >= Self.minimumPreparation,
+                  now - candidateSince >= Self.headroomSettleTime else {
+                if now - started >= Self.preparationLimit { stop(.noHeadroom) }
+                return
+            }
+            ceiling = min(ceiling, next)
             phase = .active
+            lastAdjustment = now
         }
         let allowed = BoostPolicy().evaluate(requested: requested, enabled: true,
             rendererReady: e.rendererReady, builtIn: e.supported, awake: e.awake,
@@ -97,7 +117,10 @@ public struct BoostSession: Sendable {
         guard allowed.block == nil, allowed.multiplier > 1 else { stop(.noHeadroom); return }
         // Reductions persist; later headroom recovery alone cannot brighten the desktop.
         ceiling = min(ceiling, allowed.multiplier)
-        effective = ceiling
+        // Rise smoothly toward the explicit request; apply reductions immediately.
+        let elapsed = min(0.25, max(0, now - lastAdjustment))
+        effective = min(ceiling, effective + Self.risePerSecond * elapsed)
+        lastAdjustment = now
     }
 
     public func report(now: Double) -> BoostReport {

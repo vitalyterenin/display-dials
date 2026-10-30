@@ -35,7 +35,7 @@ final class HDRRenderer {
     private func surface(frame: NSRect, scale: CGFloat, multiply: Bool) -> Surface {
         let window = PassiveWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.title = multiply ? "Display Dials · Boost" : "Display Dials · HDR probe"
-        window.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+        window.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + (multiply ? 0 : 1))
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         window.ignoresMouseEvents = true
         window.isOpaque = false
@@ -86,7 +86,7 @@ final class HDRRenderer {
             if now - lastSubmission > 1 { failed = true; throw HDRError.failed }
             return
         }
-        guard force || factor != lastFactor || now - lastSubmission >= 1 else { return }
+        guard force || factor != lastFactor || now - lastSubmission >= 0.18 else { return }
         guard let trigger else { throw HDRError.failed }
         guard let command = queue.makeCommandBuffer() else { throw HDRError.noBuffer }
         var surfaces: [(Surface, Double)] = [(trigger, 1.25)]
@@ -109,9 +109,12 @@ final class HDRRenderer {
                 guard let self else { return }
                 self.inFlight = false
                 guard ok else { self.failed = true; return }
-                self.ready = true; self.presentedFrames += 1
-                self.trigger?.window.alphaValue = 1
-                self.overlay?.window.alphaValue = 1
+                self.presentedFrames += 1
+                if !self.ready {
+                    self.ready = true
+                    self.trigger?.window.alphaValue = 1
+                    self.overlay?.window.alphaValue = 1
+                }
             }
         }
         command.commit()

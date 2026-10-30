@@ -5,7 +5,7 @@ import Darwin
 
 enum AppIdentity {
     static let name = "Display Dials"
-    static let version = "0.2.0"
+    static let version = "0.2.1"
 }
 
 @MainActor
@@ -149,7 +149,7 @@ final class PanelController: NSViewController {
             boostNote.stringValue = "Тест работает. Выключится автоматически. Коэффициент не является измерением яркости в нитах."
         } else if boost.report.phase == "preparing" && running {
             boostValue.stringValue = "Подготовка…"
-            boostNote.stringValue = "Ожидаем доступную HDR-яркость. Переключатель останавливает тест."
+            boostNote.stringValue = "Подготавливаем стабильную HDR-яркость. Переключатель останавливает тест."
         } else {
             boostValue.stringValue = String(format: "×%.2f", boost.factor)
             boostNote.stringValue = available ?? (boost.report.reason == nil || boost.report.reason == "manual"

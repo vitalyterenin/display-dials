@@ -1,4 +1,4 @@
-# Display Dials 0.2.0 implementation
+# Display Dials 0.2.1 implementation
 
 ## Goal and current status
 
@@ -9,6 +9,37 @@ The user verified Night Shift in 0.1.0. Brightness boost remains experimental:
 
 To rename the app, update AppIdentity, Package.swift, and the metadata in build-app.sh.
 
+## Stability changes in 0.2.1
+
+The user reported intermittent visible brightness gains and flicker in 0.2.0.
+The exact physical cause of the flicker has not been established. This patch
+addresses three plausible contributors in the rendering/startup path:
+
+- Render keepalive changes from about 1 Hz to about 5 Hz. The HDR marker is kept
+  one window level above the multiplying overlay, and window visibility is set only
+  after the first completed frame rather than on every frame.
+- Preparation requires at least 1 second and 0.6 seconds of settled usable headroom
+  before enabling gain. A changing startup value is no longer immediately latched
+  as the trial's permanent multiplier ceiling. Preparation remains limited to 5 seconds.
+- Gain increases are limited to 0.10 multiplier units per second, with at most
+  250 ms credited per update. Headroom reductions and safety stops remain immediate.
+  Headroom recovery never restores a multiplier reduced by a headroom drop.
+
+The controller writes a local, owner-readable trace of the latest trial to
+`~/Library/Logs/DisplayDials/latest-boost.jsonl`. It captures reports and process exit
+status without screen content or uploads. A stalled worker now has a distinct
+stop reason rather than a generic rendering error. The 30-second limit is unchanged.
+
+16 automated state/policy tests cover the revised preparation and ramp behavior.
+The updated worker passed EOF, missed-heartbeat, SIGKILL, and 30-second timeout
+checks with the tiny HDR marker. The release controller integration and startup
+smoke checks also passed. The latest trace captured active status, an intentional
+manual stop, and an observed rendering cadence of approximately 5 frames/s. A manual
+stop can record exit status 15 because the controller explicitly sends SIGTERM;
+this is distinct from an unexpected worker failure.
+Automated frame counters and tests cannot establish that visible flicker is fixed;
+that requires another manual check on the display.
+
 ## Rendering path
 
 `BoostController` launches the current executable with `--boost-worker`. The main
@@ -17,7 +48,7 @@ app does not own the boost windows. It sends a JSON heartbeat over stdin every
 
 `HDRRenderer` renders uniform RGBA16Float surfaces in extended linear sRGB. A tiny
 HDR marker requests EDR headroom from macOS. The desktop multiplier stays at 1 until
-actual headroom becomes available. A separate layer then uses `multiply` compositing.
+actual headroom becomes available and settles. A separate layer then uses `multiply` compositing.
 This relies on experimental macOS compositor behavior, not a documented Apple API
 for increasing whole-desktop brightness. Third-party renderer implementations are
 not included in the project; this implementation was written independently.

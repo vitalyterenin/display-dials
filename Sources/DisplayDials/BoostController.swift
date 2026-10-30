@@ -16,6 +16,7 @@ final class BoostController {
     private var generation = UUID()
     private var stopping = false
     private let triggerOnly: Bool
+    private let trace = BoostTrace()
 
     init(triggerOnly: Bool = false) { self.triggerOnly = triggerOnly }
 
@@ -33,6 +34,7 @@ final class BoostController {
         guard !running else { return }
         if unavailableReason != nil { onChange?(); return }
         if factor <= 1 { factor = 1.1 }
+        trace.begin()
         signal(SIGPIPE, SIG_IGN)
         let child = Process()
         let writer = Pipe(), reader = Pipe()
@@ -59,6 +61,7 @@ final class BoostController {
         do { try child.run() }
         catch {
             reader.fileHandleForReading.readabilityHandler = nil
+            trace.record("launchFailed")
             report = BoostReport(phase: "off", reason: "renderer"); onChange?(); return
         }
         try? writer.fileHandleForReading.close()
@@ -89,13 +92,14 @@ final class BoostController {
         stopping = true
         try? input?.close(); input = nil
         report = BoostReport(phase: "off", reason: reason)
+        trace.record("stopRequested", report: report)
         if process?.isRunning == true { process?.terminate() }
         onChange?()
     }
 
     private func sendHeartbeat() {
         guard !stopping, process?.isRunning == true else { return }
-        if ProcessInfo.processInfo.systemUptime - lastReport > 2.5 { stop(reason: "renderer"); return }
+        if ProcessInfo.processInfo.systemUptime - lastReport > 2.5 { stop(reason: "workerUnresponsive"); return }
         guard var data = try? JSONEncoder().encode(BoostCommand(factor: factor)) else { stop(reason: "invalidInput"); return }
         data.append(10)
         do { try input?.write(contentsOf: data) }
@@ -113,6 +117,7 @@ final class BoostController {
             guard let next = try? JSONDecoder().decode(BoostReport.self, from: line) else { stop(reason: "renderer"); return }
             lastReport = ProcessInfo.processInfo.systemUptime
             report = next
+            trace.record("report", report: next)
             onChange?()
         }
     }
@@ -126,6 +131,7 @@ final class BoostController {
         try? input?.close(); input = nil
         process = nil
         if report.phase != "off" { report = BoostReport(phase: "off", reason: status == 75 ? "timeout" : "renderer") }
+        trace.record("exit", report: report, status: status)
         onChange?()
     }
 }

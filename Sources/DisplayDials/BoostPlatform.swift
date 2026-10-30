@@ -58,6 +58,7 @@ enum BoostPlatform {
         case "displayChanged": "Конфигурация экранов изменилась. Буст отключён."
         case "conflict": "Закройте BetterDisplay, BrightIntosh и Vivid перед тестом."
         case "renderer": "Не удалось вывести HDR-слой. Буст отключён."
+        case "workerUnresponsive": "Процесс усиления перестал отвечать. Буст отключён."
         case "invalidInput": "Получены некорректные данные. Буст отключён."
         default: "Тест на 30 секунд. Выключится автоматически."
         }
