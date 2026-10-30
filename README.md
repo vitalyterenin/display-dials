@@ -2,14 +2,14 @@
 
 A compact macOS menu bar app for display warmth and experimental brightness boost.
 
-## Prototype status: 0.2.1
+## Prototype status: 0.3.0
 
 - A native menu bar panel with no Dock window.
 - Night Shift status, an on/off switch, and a warmth slider.
 - The macOS Night Shift schedule is preserved. Changes apply globally through macOS,
   rather than per monitor, and persist after the app quits.
 - Read-only queries for built-in display capabilities and current EDR headroom.
-- **Brightness boost is an experimental 30-second trial**, started manually.
+- **Brightness boost is experimental and runs continuously**, started manually.
   A Metal overlay runs in a separate process. The multiplier ranges from 1.00 to 1.25
   and defaults to 1.10. Selecting 1.00 stops the trial.
 - The multiplier is capped by current EDR headroom. If available headroom decreases,
@@ -21,10 +21,11 @@ A compact macOS menu bar app for display warmth and experimental brightness boos
   for conflicting utilities; it does not implement application exclusions.
 - System brightness, gamma tables, and display presets are not overwritten.
 
-Manual testing has shown a visible effect, but brightness flicker was reported in
-0.2.0. Version 0.2.1 adds a steady rendering cadence, settled-headroom preparation,
-and gradual gain increases. These changes still need visual confirmation on the
-display. Absolute luminance gain has not been measured with an external instrument.
+The user reported no flicker in the 0.2.1 retest. Version 0.3.0 removes the fixed
+session deadline while preserving the multiplier ceiling, thermal checks, and
+heartbeat protection. A renewable watchdog terminates a stuck worker independently
+of its main run loop. A 90-second desktop test held gain at 1.10 after startup.
+Absolute luminance gain and long-term panel lifespan have not been measured.
 
 At launch, the app only reads settings. Night Shift changes require user action.
 Brightness boost always starts disabled. There are no servers or analytics.
@@ -64,8 +65,8 @@ swift run DisplayDials --renderer-check
 The latest trial is recorded locally at
 `~/Library/Logs/DisplayDials/latest-boost.jsonl`. It contains status, headroom,
 frame counts, brightness readbacks, and the stop reason/exit status. It records no
-screen content and is not uploaded. Each trial replaces the previous trace; the
-file is capped at approximately 1 MB and readable only by the current user.
+screen content and is not uploaded. Each session replaces the previous trace. During long sessions the file wraps at
+approximately 1 MB, preserving a recent segment; it is readable only by the current user.
 
 ## Limitations
 
@@ -77,8 +78,8 @@ can cause competing updates; Display Dials rereads the system state.
 
 EDR headroom is relative HDR rendering capacity, **not a measurement in nits or a
 guarantee of panel safety**. Increased brightness may affect heat and display aging.
-The 1.25 multiplier and 30-second limit are experimental parameters, not certified
-safe operating values. A continuous mode is not available yet.
+The 1.25 multiplier is an experimental ceiling, not a certified safe operating
+value. Continuous operation stops on sleep, thermal pressure, or other safety events.
 
 See [docs/implementation.md](docs/implementation.md) for implementation details,
 validation results, sources, and the remaining brightness-boost checks.

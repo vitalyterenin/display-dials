@@ -6,17 +6,17 @@ public struct BoostCommand: Codable, Sendable {
 public struct BoostReport: Codable, Sendable {
     public var phase: String
     public var factor: Double
-    public var remaining: Int
+    public var elapsed: Double
     public var reason: String?
     public var presentedFrames: Int? = nil
     public var headroom: Double? = nil
     public var brightnessReadback: [String: Double]? = nil
-    public init(phase: String, factor: Double = 1, remaining: Int = 0, reason: String? = nil) {
-        self.phase = phase; self.factor = factor; self.remaining = remaining; self.reason = reason
+    public init(phase: String, factor: Double = 1, elapsed: Double = 0, reason: String? = nil) {
+        self.phase = phase; self.factor = factor; self.elapsed = elapsed; self.reason = reason
     }
 }
 
-/// One explicit, bounded experiment. An off session can never restart itself.
+/// One explicitly enabled session. An off session can never restart itself.
 public struct BoostSession: Sendable {
     public enum Phase: String, Sendable { case off, preparing, active }
     public enum Stop: String, Sendable {
@@ -34,7 +34,6 @@ public struct BoostSession: Sendable {
         public var sessionActive = true
         public init() {}
     }
-    public static let duration: Double = 30
     public static let preparationLimit: Double = 5
     public static let heartbeatLimit: Double = 1.5
     public static let minimumPreparation: Double = 1
@@ -79,7 +78,6 @@ public struct BoostSession: Sendable {
     public mutating func tick(now: Double, environment e: Environment) {
         guard phase != .off else { return }
         guard now.isFinite, e.headroom.isFinite, now >= started else { stop(.invalidInput); return }
-        if now - started >= Self.duration { stop(.timeout); return }
         if now - heartbeat > Self.heartbeatLimit { stop(.heartbeat); return }
         if !e.sessionActive { stop(.sessionInactive); return }
         if !e.awake { stop(.sleeping); return }
@@ -124,8 +122,8 @@ public struct BoostSession: Sendable {
     }
 
     public func report(now: Double) -> BoostReport {
-        let remaining = phase == .off || !now.isFinite ? 0
-            : Int(min(Self.duration, max(0, Self.duration - (now - started))).rounded(.up))
-        return BoostReport(phase: phase.rawValue, factor: effective, remaining: remaining, reason: reason?.rawValue)
+        let interval = now - started
+        let elapsed = phase == .off || !interval.isFinite ? 0 : max(0, interval)
+        return BoostReport(phase: phase.rawValue, factor: effective, elapsed: elapsed, reason: reason?.rawValue)
     }
 }

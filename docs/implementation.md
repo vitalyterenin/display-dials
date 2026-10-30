@@ -1,4 +1,4 @@
-# Display Dials 0.2.1 implementation
+# Display Dials 0.3.0 implementation
 
 ## Goal and current status
 
@@ -8,6 +8,41 @@ The user verified Night Shift in 0.1.0. Brightness boost remains experimental:
 **an absolute brightness increase over the original display state has not been confirmed**.
 
 To rename the app, update AppIdentity, Package.swift, and the metadata in build-app.sh.
+
+## Continuous operation in 0.3.0
+
+The user reported no visible flicker in the 0.2.1 retest and requested removal of
+the 30-second limit. Ordinary Boost now has no fixed session deadline. It still
+starts disabled and must be explicitly enabled again after sleep/wake.
+
+The former unconditional 35-second process exit has been replaced by a renewable
+3-second health watchdog running on a separate dispatch queue. Only a completed
+worker health/render tick renews it. A blocked main loop exits with status 75;
+the parent reports this as an unresponsive worker rather than a session timeout.
+The normal heartbeat checks, thermal checks, and gain ceiling are unchanged.
+A 30-second deadline exists only with the explicit diagnostic `--bounded-check`
+flag. `--stall-check` deliberately blocks the main loop to test the watchdog.
+
+17 state/policy tests passed, including a modeled three-minute session and sleep
+without automatic restart. Live EOF, missed-heartbeat, SIGKILL, deliberate main-loop
+stall, and bounded diagnostic checks passed. A full-desktop 90-second run stayed
+active beyond both former deadlines; gain after startup stayed at 1.1000 and EDR
+headroom stayed at 4. This verifies reported software state, not absolute luminance
+or long-term thermal stability.
+
+A real system sleep was initiated with `pmset sleepnow`. The worker stopped with
+reason `sleeping` before sleep. The diagnostic then received a real NSWorkspace
+wake notification and verified that Boost remained off. The explicit restart check
+is waiting for the user to unlock the session.
+
+The diagnostic `--sleep-check` enables Boost, waits for an actual NSWorkspace wake
+notification, checks that Boost remains off, waits for unlock, and issues a separate
+explicit restart action. It writes its result to
+`~/Library/Logs/DisplayDials/sleep-check.json`. It does not initiate sleep or change
+the ordinary app's resume policy.
+
+The latest-session trace now wraps at approximately 1 MB so a long-running session
+can still record its eventual stop reason without unbounded log growth.
 
 ## Stability changes in 0.2.1
 
@@ -61,7 +96,7 @@ Native fullscreen behavior still needs manual verification.
 ## Experimental limits
 
 - Only a built-in Apple Silicon display with potential EDR > 1, without mirroring.
-- At most 30 seconds, including preparation. Preparation is limited to 5 seconds.
+- No fixed duration limit in normal operation. Preparation is limited to 5 seconds.
 - A multiplier of 1.00–1.25, defaulting to 1.10. This is not a percentage of physical nits.
 - Output does not exceed current headroom. After headroom decreases, the multiplier
   does not rise automatically when it recovers; increasing it requires another
@@ -74,12 +109,12 @@ Native fullscreen behavior still needs manual verification.
   This is conservative: the app cannot determine whether their boost is enabled.
 - Missing heartbeats for more than 1.5 seconds terminates the worker. The parent
   terminates the worker if reports stop for more than 2.5 seconds. A timer independent
-  of the main run loop exits the worker after 35 seconds, even if a GPU call hangs.
+  of the main run loop exits the worker if health/render progress stops for 3 seconds.
 - Restarting, waking, or resolving the stop condition does not resume boost.
 
-The 1.25/30-second limits are not proven safe values for panel lifespan. System
+The 1.25 multiplier ceiling is not a proven safe value for panel lifespan. System
 protections are not bypassed, but zero impact on heat, power consumption, or aging
-is not promised. Continuous operation is not enabled.
+is not promised. Continuous operation is enabled in 0.3.0 with the same safety stops.
 
 ## Night Shift
 
@@ -89,7 +124,7 @@ with future macOS versions. Changes apply globally, require user action, and per
 after the app exits. The system schedule is preserved. The 0–100% level does not
 represent a calibrated color temperature in kelvin.
 
-## Validation on 2026-10-30
+## Earlier validation on 2026-10-30 (0.2.0)
 
 Environment: Apple M1 Pro, macOS 27.2, Swift 6.4.2 / Command Line Tools.
 
@@ -138,8 +173,12 @@ effect more noticeable.
 bash scripts/test.sh
 swift run DisplayDials --renderer-check
 python3 scripts/check-worker.py
-# Explicit live HDR trials, including the 30-second timeout:
+# Explicit live HDR checks, including a diagnostic-only 30-second deadline:
 python3 scripts/check-worker.py --live
+# Full-desktop boost for 90 seconds, then stop:
+python3 scripts/check-worker.py --sustained
+# Actual system sleep/wake diagnostic; sleep must be initiated separately:
+swift run DisplayDials --sleep-check
 bash scripts/build-app.sh
 ```
 

@@ -30,8 +30,15 @@ final class BoostTrace {
             var report: BoostReport?
             var exitStatus: Int32?
         }
-        guard let file, bytesWritten < 1_000_000,
-              var bytes = try? JSONEncoder().encode(Entry(event: event,
+        guard let file else { return }
+        if bytesWritten >= 1_000_000 {
+            do {
+                try file.truncate(atOffset: 0)
+                try file.seek(toOffset: 0)
+                bytesWritten = 0
+            } catch { return }
+        }
+        guard var bytes = try? JSONEncoder().encode(Entry(event: event,
                 uptime: ProcessInfo.processInfo.systemUptime, report: report, exitStatus: status)) else { return }
         bytes.append(10)
         try? file.write(contentsOf: bytes)

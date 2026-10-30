@@ -7,6 +7,7 @@ import Darwin
 @MainActor
 final class BoostWorker: NSObject {
     private var session = BoostSession()
+    private let watchdog = WorkerWatchdog()
     private var renderer: HDRRenderer?
     private var topology = ""
     private var targetID: CGDirectDisplayID = 0
@@ -18,8 +19,14 @@ final class BoostWorker: NSObject {
     func run() {
         NSApp.setActivationPolicy(.prohibited)
         signal(SIGPIPE, SIG_IGN)
-        // Independent of the main run loop / GPU. Never extend this deadline.
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 35) { _exit(75) }
+        watchdog.start()
+        // These deadlines are diagnostic-only; ordinary Boost has no duration limit.
+        if CommandLine.arguments.contains("--bounded-check") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.finish(.timeout) }
+        }
+        if CommandLine.arguments.contains("--stall-check") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Thread.sleep(forTimeInterval: 10) }
+        }
         FileHandle.standardInput.readabilityHandler = { [weak self] handle in
             let bytes = handle.availableData
             Task { @MainActor in self?.receive(bytes) }
@@ -100,6 +107,7 @@ final class BoostWorker: NSObject {
         report.headroom = e.headroom
         report.brightnessReadback = BrightnessReadback.values(for: targetID)
         if CommandLine.arguments.contains("--trigger-only") { report.factor = 1 }
+        watchdog.renew()
         emit(report)
     }
 

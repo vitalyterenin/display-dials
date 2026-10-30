@@ -74,14 +74,14 @@ private func activeSession() -> BoostSession {
     #expect(s.phase == .off)
 }
 
-@Test func sessionExpiresEvenWithHeartbeatsAndSliderChanges() {
+@Test func sessionContinuesWithHeartbeatsAndSliderChanges() {
     var s = BoostSession(); s.start(now: 0, factor: 1.1)
-    for t in 0...150 {
+    for t in 0...900 {
         let now = Double(t) / 5
         let factor = t < 10 || t.isMultiple(of: 2) ? 1.1 : 1.2
         s.receive(now: now, factor: factor); s.tick(now: now, environment: environment())
     }
-    #expect(s.reason == .timeout); #expect(s.effective == 1)
+    #expect(s.reason == nil); #expect(s.phase == .active); #expect(s.effective > 1)
 }
 
 @Test func parentFailureAndLateHeartbeatFailClosed() {
@@ -127,9 +127,21 @@ private func activeSession() -> BoostSession {
     #expect(s.reason == .renderer)
 }
 
-@Test func diagnosticCountdownCannotOverflow() {
+@Test func diagnosticElapsedTimeStaysFinite() {
     var s = BoostSession(); s.start(now: 10, factor: 1.1)
-    #expect(s.report(now: .greatestFiniteMagnitude).remaining == 0)
-    #expect(s.report(now: -.greatestFiniteMagnitude).remaining == 30)
-    #expect(s.report(now: .nan).remaining == 0)
+    #expect(s.report(now: .greatestFiniteMagnitude).elapsed.isFinite)
+    #expect(s.report(now: -.greatestFiniteMagnitude).elapsed == 0)
+    #expect(s.report(now: .nan).elapsed == 0)
+}
+
+@Test func sleepEndsContinuousSessionUntilExplicitRestart() {
+    var s = activeSession()
+    advance(&s, from: 21, through: 450)
+    var sleeping = environment(); sleeping.awake = false
+    s.tick(now: 90.1, environment: sleeping)
+    #expect(s.phase == .off); #expect(s.reason == .sleeping)
+    s.receive(now: 91, factor: 1.2); s.tick(now: 91, environment: environment())
+    #expect(s.phase == .off); #expect(s.effective == 1)
+    s.start(now: 92, factor: 1.1)
+    #expect(s.phase == .preparing); #expect(s.effective == 1)
 }

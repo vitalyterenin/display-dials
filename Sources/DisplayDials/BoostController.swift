@@ -69,7 +69,7 @@ final class BoostController {
         process = child; input = writer.fileHandleForWriting; output = reader.fileHandleForReading
         stopping = false
         buffer = Data(); lastReport = ProcessInfo.processInfo.systemUptime
-        report = BoostReport(phase: "preparing", remaining: Int(BoostSession.duration))
+        report = BoostReport(phase: "preparing")
         sendHeartbeat()
         heartbeat = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.sendHeartbeat() }
@@ -130,7 +130,7 @@ final class BoostController {
         try? output?.close(); output = nil
         try? input?.close(); input = nil
         process = nil
-        if report.phase != "off" { report = BoostReport(phase: "off", reason: status == 75 ? "timeout" : "renderer") }
+        if report.phase != "off" { report = BoostReport(phase: "off", reason: status == 75 ? "workerUnresponsive" : "renderer") }
         trace.record("exit", report: report, status: status)
         onChange?()
     }

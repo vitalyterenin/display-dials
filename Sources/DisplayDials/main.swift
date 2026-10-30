@@ -5,7 +5,7 @@ import Darwin
 
 enum AppIdentity {
     static let name = "Display Dials"
-    static let version = "0.2.1"
+    static let version = "0.3.0"
 }
 
 @MainActor
@@ -60,7 +60,7 @@ final class PanelController: NSViewController {
 
         boostSwitch.target = self
         boostSwitch.action = #selector(toggleBoost)
-        boostSwitch.setAccessibilityLabel("Буст яркости — тест на 30 секунд")
+        boostSwitch.setAccessibilityLabel("Буст яркости")
         stack.addArrangedSubview(row("Буст · эксперимент", control: boostSwitch))
         boostSlider.target = self
         boostSlider.action = #selector(changeBoost)
@@ -145,15 +145,15 @@ final class PanelController: NSViewController {
         boostSwitch.isEnabled = running || available == nil
         boostSlider.isEnabled = running || available == nil
         if boost.report.phase == "active" {
-            boostValue.stringValue = String(format: "×%.2f · %d с", boost.report.factor, boost.report.remaining)
-            boostNote.stringValue = "Тест работает. Выключится автоматически. Коэффициент не является измерением яркости в нитах."
+            boostValue.stringValue = String(format: "×%.2f", boost.report.factor)
+            boostNote.stringValue = "Буст включён. При сне или нагреве отключится автоматически."
         } else if boost.report.phase == "preparing" && running {
             boostValue.stringValue = "Подготовка…"
             boostNote.stringValue = "Подготавливаем стабильную HDR-яркость. Переключатель останавливает тест."
         } else {
             boostValue.stringValue = String(format: "×%.2f", boost.factor)
             boostNote.stringValue = available ?? (boost.report.reason == nil || boost.report.reason == "manual"
-                ? "Тест на 30 секунд. Повышает нагрев и расход энергии."
+                ? "Работает до ручного выключения, сна или срабатывания защиты."
                 : BoostPlatform.reason(boost.report.reason))
         }
     }
@@ -272,6 +272,10 @@ if CommandLine.arguments.contains("--boost-worker") {
 } else if CommandLine.arguments.contains("--renderer-check") {
     let data = try JSONSerialization.data(withJSONObject: HDRRenderer.offscreenCheck(), options: [.prettyPrinted, .sortedKeys])
     print(String(decoding: data, as: UTF8.self))
+} else if CommandLine.arguments.contains("--sleep-check") {
+    let check = SleepCheck()
+    check.run()
+    withExtendedLifetime(check) { app.run() }
 } else if CommandLine.arguments.contains("--controller-check") {
     // Integration check of the UI controller/IPC path with only a tiny HDR marker.
     app.setActivationPolicy(.prohibited)
@@ -294,7 +298,7 @@ if CommandLine.arguments.contains("--boost-worker") {
     let result: [String: Any] = [
         "app": AppIdentity.name,
         "version": AppIdentity.version,
-        "boostRenderer": "experimental Metal overlay; 30 second worker lease",
+        "boostRenderer": "experimental Metal overlay; continuous with liveness watchdog",
         "conflictingApps": BoostPlatform.conflictingApps,
         "sessionActive": BoostPlatform.sessionActive,
         "screens": displaySnapshot(),
