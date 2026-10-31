@@ -6,7 +6,7 @@ import Darwin
 final class BoostController {
     var onChange: (() -> Void)?
     private(set) var report = BoostReport(phase: "off")
-    private(set) var factor: Double = 1.1
+    private(set) var factor: Double = 1 + 0.25 * 4 / 9
     private var process: Process?
     private var input: FileHandle?
     private var output: FileHandle?
@@ -33,7 +33,7 @@ final class BoostController {
     func start() {
         guard !running else { return }
         if unavailableReason != nil { onChange?(); return }
-        if factor <= 1 { factor = 1.1 }
+        if factor <= 1 { factor = 1 + 0.25 * 4 / 9 }
         trace.begin()
         signal(SIGPIPE, SIG_IGN)
         let child = Process()

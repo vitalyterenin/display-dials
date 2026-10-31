@@ -5,7 +5,7 @@ import Darwin
 
 enum AppIdentity {
     static let name = "Display Dials"
-    static let version = "0.3.0"
+    static let version = "0.3.1"
 }
 
 @MainActor
@@ -25,8 +25,8 @@ final class PanelController: NSViewController {
     let warmth = DDWarmthClient()
     let boost = BoostController()
     private let boostSwitch = NSSwitch()
-    private let boostSlider = NSSlider(value: 1.1, minValue: 1, maxValue: 1.25, target: nil, action: nil)
-    private let boostValue = NSTextField(labelWithString: "×1.10")
+    private let boostSlider = NSSlider(value: 1 + 0.25 * 4 / 9, minValue: 1, maxValue: 1.25, target: nil, action: nil)
+    private let boostValue = NSTextField(labelWithString: "×1.11")
     private let screenLabel = NSTextField(wrappingLabelWithString: "")
     private let warmthToggle = NSSwitch()
     private let warmthSlider = NSSlider(value: 0.5, minValue: 0, maxValue: 1, target: nil, action: nil)
@@ -64,6 +64,8 @@ final class PanelController: NSViewController {
         stack.addArrangedSubview(row("Буст · эксперимент", control: boostSwitch))
         boostSlider.target = self
         boostSlider.action = #selector(changeBoost)
+        boostSlider.numberOfTickMarks = 10
+        boostSlider.allowsTickMarkValuesOnly = true
         boostSlider.isContinuous = false
         boostSlider.setAccessibilityLabel("Коэффициент усиления яркости")
         stack.addArrangedSubview(boostSlider)
@@ -79,6 +81,8 @@ final class PanelController: NSViewController {
         stack.addArrangedSubview(row("Теплота · Night Shift", control: warmthToggle))
         warmthSlider.target = self
         warmthSlider.action = #selector(changeWarmth)
+        warmthSlider.numberOfTickMarks = 10
+        warmthSlider.allowsTickMarkValuesOnly = true
         // Commit once on release, not on every pixel while dragging.
         warmthSlider.isContinuous = false
         warmthSlider.setAccessibilityLabel("Теплота экрана")
@@ -128,7 +132,7 @@ final class PanelController: NSViewController {
         warmthToggle.state = state?["enabled"]?.boolValue == true ? .on : .off
         warmthSlider.isEnabled = available && warmthToggle.state == .on
         if let value = state?["strength"]?.doubleValue {
-            warmthSlider.doubleValue = value
+            warmthSlider.doubleValue = warmthSlider.closestTickMarkValue(toValue: value)
             warmthValue.stringValue = "\(Int((value * 100).rounded()))%"
         } else {
             warmthValue.stringValue = "—"
@@ -165,7 +169,7 @@ final class PanelController: NSViewController {
     }
 
     @objc private func changeBoost() {
-        boost.changeFactor(boostSlider.doubleValue)
+        boost.changeFactor(boostSlider.closestTickMarkValue(toValue: boostSlider.doubleValue))
         refreshBoost()
     }
 
@@ -175,7 +179,8 @@ final class PanelController: NSViewController {
     }
 
     @objc private func changeWarmth() {
-        report(warmth.changeStrength(warmthSlider.floatValue))
+        let strength = Float(warmthSlider.closestTickMarkValue(toValue: warmthSlider.doubleValue))
+        report(warmth.changeStrength(strength))
     }
 
     private func report(_ success: Bool) {

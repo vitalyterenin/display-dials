@@ -2,16 +2,18 @@
 
 A compact macOS menu bar app for display warmth and experimental brightness boost.
 
-## Prototype status: 0.3.0
+## Prototype status: 0.3.1
 
 - A native menu bar panel with no Dock window.
 - Night Shift status, an on/off switch, and a warmth slider.
+- Each slider has exactly 10 selectable positions, including both endpoints.
+  An existing Night Shift strength between positions remains unchanged until adjusted.
 - The macOS Night Shift schedule is preserved. Changes apply globally through macOS,
   rather than per monitor, and persist after the app quits.
 - Read-only queries for built-in display capabilities and current EDR headroom.
 - **Brightness boost is experimental and runs continuously**, started manually.
   A Metal overlay runs in a separate process. The multiplier ranges from 1.00 to 1.25
-  and defaults to 1.10. Selecting 1.00 stops the trial.
+  and defaults to approximately 1.11. Selecting 1.00 stops the boost.
 - The multiplier is capped by current EDR headroom. If available headroom decreases,
   the app does not automatically raise the multiplier when headroom recovers.
 - The trial stops when thermal state rises above nominal, the display sleeps, the
