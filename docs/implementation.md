@@ -32,10 +32,18 @@ or long-term thermal stability.
 
 A real system sleep was initiated with `pmset sleepnow`. The worker stopped with
 reason `sleeping` before sleep. The diagnostic then received a real NSWorkspace
-wake notification and verified that Boost remained off. The explicit restart check
-could not complete: the session remained locked for its 120-second waiting period.
-The diagnostic exited with Boost off. Manual restart after unlock remains to be
-verified; this waiting timeout is diagnostic-only, not a Boost session deadline.
+wake notification and verified that Boost remained off. The first explicit restart check
+could not complete while the session remained locked for its 120-second waiting
+period; the diagnostic exited with Boost off. This waiting timeout is diagnostic-only,
+not a Boost session deadline.
+
+After the user unlocked the session, a separate controller start/stop integration
+check passed. A full-desktop worker was then explicitly restarted for eight seconds:
+it reached gain 1.10, reported EDR headroom 4, and terminated normally after the test
+closed its heartbeat channel. Results are stored locally in
+`~/Library/Logs/DisplayDials/post-unlock-check.json`. This completes the separate
+post-unlock restart check; the earlier diagnostic was not rerun as a single
+uninterrupted sleep/wake sequence.
 
 The diagnostic `--sleep-check` enables Boost, waits for an actual NSWorkspace wake
 notification, checks that Boost remains off, waits for unlock, and issues a separate
