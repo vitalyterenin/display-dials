@@ -5,7 +5,7 @@ import Darwin
 
 enum AppIdentity {
     static let name = "Display Dials"
-    static let version = "0.3.1"
+    static let version = "0.3.2"
 }
 
 @MainActor
@@ -60,16 +60,16 @@ final class PanelController: NSViewController {
 
         boostSwitch.target = self
         boostSwitch.action = #selector(toggleBoost)
-        boostSwitch.setAccessibilityLabel("Буст яркости")
-        stack.addArrangedSubview(row("Буст · эксперимент", control: boostSwitch))
+        boostSwitch.setAccessibilityLabel("Brightness Boost")
+        stack.addArrangedSubview(row("Boost · Experimental", control: boostSwitch))
         boostSlider.target = self
         boostSlider.action = #selector(changeBoost)
         boostSlider.numberOfTickMarks = 10
         boostSlider.allowsTickMarkValuesOnly = true
         boostSlider.isContinuous = false
-        boostSlider.setAccessibilityLabel("Коэффициент усиления яркости")
+        boostSlider.setAccessibilityLabel("Brightness Boost multiplier")
         stack.addArrangedSubview(boostSlider)
-        stack.addArrangedSubview(row("Усиление", control: boostValue))
+        stack.addArrangedSubview(row("Boost level", control: boostValue))
         boostNote.font = .systemFont(ofSize: 11)
         boostNote.textColor = .secondaryLabelColor
         stack.addArrangedSubview(boostNote)
@@ -78,16 +78,16 @@ final class PanelController: NSViewController {
         warmthToggle.target = self
         warmthToggle.action = #selector(toggleWarmth)
         warmthToggle.setAccessibilityLabel("Night Shift")
-        stack.addArrangedSubview(row("Теплота · Night Shift", control: warmthToggle))
+        stack.addArrangedSubview(row("Warmth · Night Shift", control: warmthToggle))
         warmthSlider.target = self
         warmthSlider.action = #selector(changeWarmth)
         warmthSlider.numberOfTickMarks = 10
         warmthSlider.allowsTickMarkValuesOnly = true
         // Commit once on release, not on every pixel while dragging.
         warmthSlider.isContinuous = false
-        warmthSlider.setAccessibilityLabel("Теплота экрана")
+        warmthSlider.setAccessibilityLabel("Display warmth")
         stack.addArrangedSubview(warmthSlider)
-        stack.addArrangedSubview(row("Холоднее → теплее", control: warmthValue))
+        stack.addArrangedSubview(row("Cooler → Warmer", control: warmthValue))
         warmthNote.font = .systemFont(ofSize: 11)
         warmthNote.textColor = .secondaryLabelColor
         stack.addArrangedSubview(warmthNote)
@@ -97,9 +97,9 @@ final class PanelController: NSViewController {
         stack.addArrangedSubview(errorLabel)
         stack.addArrangedSubview(separator())
 
-        let quit = NSButton(title: "Выйти", target: NSApp, action: #selector(NSApplication.terminate(_:)))
+        let quit = NSButton(title: "Quit", target: NSApp, action: #selector(NSApplication.terminate(_:)))
         quit.bezelStyle = .rounded
-        stack.addArrangedSubview(row("Прототип \(AppIdentity.version)", control: quit))
+        stack.addArrangedSubview(row("Prototype \(AppIdentity.version)", control: quit))
         for item in stack.arrangedSubviews {
             item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
@@ -123,7 +123,7 @@ final class PanelController: NSViewController {
 
     func refresh() {
         let screen = displaySnapshot().first { ($0["builtIn"] as? Bool) == true }
-        screenLabel.stringValue = screen?["name"] as? String ?? "Встроенный экран не найден"
+        screenLabel.stringValue = screen?["name"] as? String ?? "Built-in display not found"
         refreshBoost()
 
         let state = warmth.readState()
@@ -138,8 +138,8 @@ final class PanelController: NSViewController {
             warmthValue.stringValue = "—"
         }
         warmthNote.stringValue = available
-            ? "Используется системный Night Shift. Расписание macOS сохраняется."
-            : "Night Shift недоступен. \(warmth.diagnostic)."
+            ? "Uses system Night Shift. The macOS schedule is preserved."
+            : "Night Shift is unavailable. \(warmth.diagnostic)."
     }
 
     private func refreshBoost() {
@@ -150,14 +150,14 @@ final class PanelController: NSViewController {
         boostSlider.isEnabled = running || available == nil
         if boost.report.phase == "active" {
             boostValue.stringValue = String(format: "×%.2f", boost.report.factor)
-            boostNote.stringValue = "Буст включён. При сне или нагреве отключится автоматически."
+            boostNote.stringValue = "Boost is on. It turns off automatically during sleep or thermal pressure."
         } else if boost.report.phase == "preparing" && running {
-            boostValue.stringValue = "Подготовка…"
-            boostNote.stringValue = "Подготавливаем стабильную HDR-яркость. Переключатель останавливает тест."
+            boostValue.stringValue = "Preparing…"
+            boostNote.stringValue = "Waiting for stable HDR brightness. Use the switch to stop Boost."
         } else {
             boostValue.stringValue = String(format: "×%.2f", boost.factor)
             boostNote.stringValue = available ?? (boost.report.reason == nil || boost.report.reason == "manual"
-                ? "Работает до ручного выключения, сна или срабатывания защиты."
+                ? "Runs until manually turned off, sleep, or a safety stop."
                 : BoostPlatform.reason(boost.report.reason))
         }
     }
@@ -184,7 +184,7 @@ final class PanelController: NSViewController {
     }
 
     private func report(_ success: Bool) {
-        errorLabel.stringValue = success ? "" : "macOS не применила настройку. Попробуйте ещё раз."
+        errorLabel.stringValue = success ? "" : "macOS could not apply the setting. Please try again."
         errorLabel.isHidden = success
         refresh()
     }

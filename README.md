@@ -2,9 +2,9 @@
 
 A compact macOS menu bar app for display warmth and experimental brightness boost.
 
-## Prototype status: 0.3.1
+## Prototype status: 0.3.2
 
-- A native menu bar panel with no Dock window.
+- An English-language native menu bar panel with no Dock window.
 - Night Shift status, an on/off switch, and a warmth slider.
 - Each slider has exactly 10 selectable positions, including both endpoints.
   An existing Night Shift strength between positions remains unchanged until adjusted.

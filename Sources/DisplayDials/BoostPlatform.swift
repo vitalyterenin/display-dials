@@ -49,18 +49,18 @@ enum BoostPlatform {
     }
     static func reason(_ code: String?) -> String {
         switch code {
-        case "timeout": "Тест завершён. Буст выключен."
-        case "heartbeat": "Связь с панелью прервалась. Буст отключён."
-        case "unsupported": "Нужен встроенный XDR-экран без зеркалирования."
-        case "sleeping", "sessionInactive": "Сеанс приостановлен. Включите буст заново."
-        case "thermal": "Система нагрелась. Буст отключён."
-        case "noHeadroom": "macOS не предоставила запас HDR-яркости."
-        case "displayChanged": "Конфигурация экранов изменилась. Буст отключён."
-        case "conflict": "Закройте BetterDisplay, BrightIntosh и Vivid перед тестом."
-        case "renderer": "Не удалось вывести HDR-слой. Буст отключён."
-        case "workerUnresponsive": "Процесс усиления перестал отвечать. Буст отключён."
-        case "invalidInput": "Получены некорректные данные. Буст отключён."
-        default: "Буст отключается при сне или срабатывании защиты."
+        case "timeout": "The test ended. Boost is off."
+        case "heartbeat": "Connection to the panel was lost. Boost is off."
+        case "unsupported": "A built-in XDR display without mirroring is required."
+        case "sleeping", "sessionInactive": "The session was interrupted. Turn Boost on again."
+        case "thermal": "The system is warm. Boost is off."
+        case "noHeadroom": "macOS did not provide HDR brightness headroom."
+        case "displayChanged": "The display configuration changed. Boost is off."
+        case "conflict": "Quit BetterDisplay, BrightIntosh, and Vivid before enabling Boost."
+        case "renderer": "Could not render the HDR layer. Boost is off."
+        case "workerUnresponsive": "The Boost process stopped responding. Boost is off."
+        case "invalidInput": "Invalid data was received. Boost is off."
+        default: "Boost turns off during sleep or when a safety limit is reached."
         }
     }
 }

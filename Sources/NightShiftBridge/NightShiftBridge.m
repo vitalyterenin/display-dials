@@ -27,7 +27,7 @@ typedef struct {
 - (instancetype)init {
     self = [super init];
     if (!self) return nil;
-    _diagnostic = @"CoreBrightness недоступен";
+    _diagnostic = @"CoreBrightness is unavailable";
     // Keep the framework loaded for the lifetime of the process.
     void *handle = dlopen("/System/Library/PrivateFrameworks/CoreBrightness.framework/CoreBrightness", RTLD_LAZY | RTLD_LOCAL);
     if (!handle) return self;
@@ -44,12 +44,12 @@ typedef struct {
             NSMethodSignature *sig = [_client methodSignatureForSelector:NSSelectorFromString(name)];
             NSArray<NSString *> *types = arguments[name];
             if (!sig || sig.numberOfArguments != types.count + 2 || strcmp(sig.methodReturnType, @encode(BOOL)) != 0) {
-                _diagnostic = @"Несовместимая версия Night Shift API";
+                _diagnostic = @"Incompatible Night Shift API version";
                 return self;
             }
             for (NSUInteger i = 0; i < types.count; i++) {
                 if (strcmp([sig getArgumentTypeAtIndex:i + 2], types[i].UTF8String) != 0) {
-                    _diagnostic = @"Изменился формат Night Shift API";
+                    _diagnostic = @"Night Shift API format has changed";
                     return self;
                 }
             }
@@ -61,14 +61,14 @@ typedef struct {
         NSUInteger size = 0, alignment = 0;
         NSGetSizeAndAlignment(arg + 1, &size, &alignment);
         if (size != sizeof(DDSystemStatus) || alignment != __alignof__(DDSystemStatus)) {
-            _diagnostic = @"Изменился формат состояния Night Shift";
+            _diagnostic = @"Night Shift status format has changed";
             return self;
         }
         _supported = YES;
-        _diagnostic = @"Night Shift API доступен";
+        _diagnostic = @"Night Shift API is available";
     } @catch (NSException *exception) {
         _supported = NO;
-        _diagnostic = @"Не удалось подключиться к Night Shift";
+        _diagnostic = @"Could not connect to Night Shift";
     }
     return self;
 }
@@ -89,7 +89,7 @@ typedef struct {
         return result;
     } @catch (NSException *exception) {
         _supported = NO;
-        _diagnostic = @"Night Shift API перестал отвечать";
+        _diagnostic = @"Night Shift API stopped responding";
         return NO;
     }
 }
