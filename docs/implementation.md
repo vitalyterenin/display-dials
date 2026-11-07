@@ -121,6 +121,8 @@ which can wait for quit or permission.
 Release builds contain only arm64 slices, including bundled Sparkle executables.
 Releases use a compressed APFS DMG containing the app and an Applications shortcut;
 the same image supports manual installation and Sparkle updates.
+The public download is always `DisplayDials.dmg`, and the signed appcast contains
+only the current release. Publication replaces both without retaining release files.
 The packaging script requires an `arm64` appcast hardware requirement, verifies
 archive and appcast Ed25519 signatures, and uses one persistent update identity.
 Bundle settings require signed feeds with no expiration fallback and verification

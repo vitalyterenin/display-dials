@@ -5,6 +5,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      republish_current:
+        description: 'Reuse the published DMG at the permanent download URL (main only)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,7 +29,17 @@ jobs:
       - name: Validate release version
         env:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-        run: python3 scripts/release.py validate
+        run: |
+          if [[ '${{ inputs.republish_current }}' == 'true' && "$GITHUB_REF" != refs/heads/main ]]; then
+            echo 'Republishing the current download is allowed only from main'
+            exit 1
+          fi
+          python3 scripts/release.py validate
+      - name: Test publication safety
+        run: |
+          python3 -m venv "$RUNNER_TEMP/publication-tests"
+          "$RUNNER_TEMP/publication-tests/bin/python" -m pip install 'boto3==1.42.97'
+          "$RUNNER_TEMP/publication-tests/bin/python" -m unittest discover -s Tests -p 'test_*.py'
       - name: Run read-only diagnostics and UI smoke check
         run: bash scripts/test.sh
       - name: Build for Apple Silicon
@@ -45,9 +60,15 @@ jobs:
           python3 scripts/release.py previous "$RUNNER_TEMP/previous.xml"
           previous_args=()
           if [[ -f "$RUNNER_TEMP/previous.xml" ]]; then previous_args+=(--previous "$RUNNER_TEMP/previous.xml"); fi
-          python3 scripts/release.py package \
-            --app "$RUNNER_TEMP/DisplayDials/Display Dials.app" \
-            --output "$RUNNER_TEMP/release" --tools "$tools" "${previous_args[@]}"
+          if [[ '${{ inputs.republish_current }}' == 'true' ]]; then
+            python3 scripts/release.py republish \
+              --output "$RUNNER_TEMP/release" --tools "$tools" \
+              --previous "$RUNNER_TEMP/previous.xml"
+          else
+            python3 scripts/release.py package \
+              --app "$RUNNER_TEMP/DisplayDials/Display Dials.app" \
+              --output "$RUNNER_TEMP/release" --tools "$tools" "${previous_args[@]}"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name != 'pull_request'
         with:
@@ -57,7 +78,7 @@ jobs:
           retention-days: 14
 
   publish:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.republish_current && github.ref == 'refs/heads/main')
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
