@@ -39,7 +39,7 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/publication-tests"
           "$RUNNER_TEMP/publication-tests/bin/python" -m pip install 'boto3==1.42.97'
-          "$RUNNER_TEMP/publication-tests/bin/python" -m unittest discover -s tests -p 'test_*.py'
+          "$RUNNER_TEMP/publication-tests/bin/python" -m unittest discover -s Tests -p 'test_*.py'
       - name: Run read-only diagnostics and UI smoke check
         run: bash scripts/test.sh
       - name: Build for Apple Silicon
