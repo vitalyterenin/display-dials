@@ -7,6 +7,7 @@
 | `Sources/DisplayDials/main.swift` | Menu bar item, panel, More options menu, and diagnostic entry points |
 | `Sources/NightShiftBridge/` | Objective-C adapter for the private Night Shift API |
 | `Sources/DisplayDials/UpdateController.swift` | Sparkle startup, availability, and preferences |
+| `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
 | `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
 | `Sources/UsageTelemetry/` | Consent gate, typed events, memory-only batches and TelemetryDeck transport |
 | `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
@@ -36,11 +37,12 @@ value back to macOS.
 More options opens a native `NSMenu`, populated from the running state each time:
 
 1. An informational app name/version row.
-2. Check for Updates…
-3. Check for Updates Automatically.
-4. Install Updates Automatically.
-5. Usage Statistics…
-6. Quit Display Dials.
+2. Launch at Login, with a System Settings action when approval is required.
+3. Check for Updates…
+4. Check for Updates Automatically.
+5. Install Updates Automatically.
+6. Usage Statistics…
+7. Quit Display Dials.
 
 The menu delegate returns the screen's visible frame as its confinement rectangle.
 The small popover must not constrain the menu's height. Update commands reflect
@@ -131,6 +133,33 @@ are removed from the bundle. Application signing is currently ad hoc.
 
 See [release operations](releases.md) for the publication pipeline and the future
 Developer ID/notarization transition.
+
+## Launch at login
+
+`LoginItemController` uses `SMAppService.mainApp` on macOS 13 and later. It creates
+no helper executable, LaunchAgent, LaunchDaemon, or custom preferences flag.
+Normal startup only reads the launch event; registration changes happen solely
+in response to the menu action. The status is read again whenever the menu opens,
+so changes made in macOS System Settings are reflected without restarting.
+
+Enabled registrations have a checkmark; `requiresApproval` has a mixed mark,
+explicit title and a System Settings action. Register/unregister errors appear in
+a native alert with an option to open Login Items settings. Asynchronous
+unregistration disables the menu action until it finishes. The current app keeps
+running when its login registration is removed.
+
+The change action is disabled outside an app bundle, on a read-only volume, and
+in diagnostic/smoke modes. No login-item setting is sent to telemetry.
+
+During `applicationDidFinishLaunching`, the Apple open-application event is checked
+for `keyAELaunchedAsLogInItem`. An automatic login launch initializes the menu bar,
+updater and consent-gated telemetry but does not show the panel or consent window.
+An undecided user sees the consent window on their first manual opening instead.
+Normal launches and application reopen events still show the app's interface.
+
+Local validation of the ad hoc signed build successfully registered it as an
+enabled/allowed main-app login item and unregistered it through the new menu.
+The initial off state was restored. The check did not log out or restart macOS.
 
 ## Validation and diagnostics
 
