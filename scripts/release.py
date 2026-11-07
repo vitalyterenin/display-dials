@@ -20,6 +20,7 @@ import xml.etree.ElementTree as ET
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ACCOUNT = 'com.vitalyterenin.displaydials'
 NS = {'sparkle': 'http://www.andymatuschak.org/xml-namespaces/sparkle'}
+ARCHIVE_NAME = 'DisplayDials.dmg'
 
 
 def config():
@@ -90,17 +91,6 @@ def create_disk_image(app, archive):
     run('hdiutil', 'verify', archive)
 
 
-def retain_disk_image_updates(root):
-    channel = root.find('channel')
-    removed = 0
-    for item in list(channel.findall('item')):
-        enclosure = item.find('enclosure')
-        if enclosure is None or not urllib.parse.urlparse(enclosure.get('url', '')).path.lower().endswith('.dmg'):
-            channel.remove(item)
-            removed += 1
-    return removed
-
-
 def package(app, output, tools, previous):
     data = config()
     output = pathlib.Path(output).resolve()
@@ -121,34 +111,33 @@ def package(app, output, tools, previous):
         ['lipo', '-archs', str(app / 'Contents/MacOS/DisplayDials')], text=True).strip()
     if architectures != 'arm64':
         raise ValueError('Releases must contain only the arm64 app binary')
-    archive = output / f'DisplayDials-{data["version"]}.dmg'
+    archive = output / ARCHIVE_NAME
     if previous:
         previous = pathlib.Path(previous)
         content = previous.read_bytes()
-        previous_root, versions = read_feed(content)
+        _, versions = read_feed(content)
         if versions and int(data['build']) <= max(versions):
             raise ValueError('New build must be greater than every published build')
-        # Carry only disk-image releases into the signed update feed.
-        if retain_disk_image_updates(previous_root):
-            ET.register_namespace('sparkle', NS['sparkle'])
-            content = ET.tostring(previous_root, encoding='utf-8', xml_declaration=True)
-        (output / 'appcast.xml').write_bytes(content)
     state_file = pathlib.Path(previous).with_suffix('.state.json') if previous else None
     state = json.loads(state_file.read_text()) if state_file and state_file.exists() else {'etag': None}
-    (output / 'publication.json').write_text(json.dumps(state))
     create_disk_image(app, archive)
+    prepare_feed(output, tools, data, state)
+
+
+def prepare_feed(output, tools, data, state):
+    archive = output / ARCHIVE_NAME
     args, kwargs = signing_args()
     run(pathlib.Path(tools) / 'bin/generate_appcast', *args,
         '--download-url-prefix', data['downloadURLPrefix'],
-        '--maximum-deltas', '0', '--maximum-versions', '0',
+        '--maximum-deltas', '0', '--maximum-versions', '1',
         '--link', 'https://teren.in/', output, **kwargs)
     run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify',
         output / 'appcast.xml', **kwargs)
     root, _ = read_feed((output / 'appcast.xml').read_bytes())
-    item = next((i for i in root.findall('./channel/item')
-                 if i.findtext('sparkle:version', namespaces=NS) == data['build']), None)
-    if item is None:
-        raise ValueError('Generated appcast does not contain this build')
+    items = root.findall('./channel/item')
+    if len(items) != 1 or items[0].findtext('sparkle:version', namespaces=NS) != data['build']:
+        raise ValueError('Generated appcast must contain only the current build')
+    item = items[0]
     if item.findtext('sparkle:hardwareRequirements', namespaces=NS) != 'arm64':
         raise ValueError('Generated appcast must require Apple Silicon')
     enclosure = item.find('enclosure')
@@ -163,8 +152,43 @@ def package(app, output, tools, previous):
     print(f'Ready: {archive}\nFeed: {output / "appcast.xml"}')
 
 
+def republish(output, tools, previous):
+    """Reuse the signed, published DMG without rebuilding or changing its version."""
+    data = config()
+    output = pathlib.Path(output).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    if any(output.iterdir()):
+        raise ValueError('Use an empty package output directory')
+    previous = pathlib.Path(previous)
+    args, kwargs = signing_args()
+    run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify', previous, **kwargs)
+    root, _ = read_feed(previous.read_bytes())
+    item = max(root.findall('./channel/item'), key=lambda i: int(i.findtext('sparkle:version', namespaces=NS)))
+    if (item.findtext('sparkle:version', namespaces=NS) != data['build']
+            or item.findtext('sparkle:shortVersionString', namespaces=NS) != data['version']):
+        raise ValueError('The configured version must equal the currently published release')
+    enclosure = item.find('enclosure')
+    source = enclosure.get('url', '')
+    if not source.startswith(data['downloadURLPrefix']):
+        raise ValueError('The published download must belong to this application')
+    name = source.removeprefix(data['downloadURLPrefix'])
+    if not re.fullmatch(r'DisplayDials(?:-\d+\.\d+\.\d+)?\.dmg', name):
+        raise ValueError('Unexpected published download name')
+    origin = 'https://storage.yandexcloud.net/teren.in/updates/display-dials/' + name
+    with urllib.request.urlopen(origin, timeout=60) as response:
+        content = response.read()
+    if len(content) != int(enclosure.get('length')):
+        raise ValueError('Published download length does not match the signed feed')
+    archive = output / ARCHIVE_NAME
+    archive.write_bytes(content)
+    signature = enclosure.get('{' + NS['sparkle'] + '}edSignature')
+    run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify', archive, signature, **kwargs)
+    state = json.loads(previous.with_suffix('.state.json').read_text())
+    prepare_feed(output, tools, data, state)
+
+
 def previous(path):
-    # Read the origin directly so a stale CDN response cannot lose feed history.
+    # Read the origin directly for the current build number and publication ETag.
     origin = 'https://storage.yandexcloud.net/teren.in/updates/display-dials/appcast.xml'
     request = urllib.request.Request(origin, headers={'Cache-Control': 'no-cache'})
     path = pathlib.Path(path)
@@ -196,11 +220,16 @@ def main():
     p.add_argument('--output', required=True)
     p.add_argument('--tools', required=True)
     p.add_argument('--previous')
+    p = commands.add_parser('republish')
+    p.add_argument('--output', required=True)
+    p.add_argument('--tools', required=True)
+    p.add_argument('--previous', required=True)
     commands.add_parser('validate')
     args = parser.parse_args()
     if args.command == 'plist': write_plist(args.path)
     elif args.command == 'previous': previous(args.path)
     elif args.command == 'package': package(args.app, args.output, args.tools, args.previous)
+    elif args.command == 'republish': republish(args.output, args.tools, args.previous)
     else:
         data = config()
         tag = os.environ.get('RELEASE_TAG')

@@ -15,6 +15,9 @@ BUCKET = 'teren.in'
 PREFIX = 'updates/display-dials/'
 ORIGIN = 'https://storage.yandexcloud.net/' + BUCKET + '/' + PREFIX
 NS = {'sparkle': 'http://www.andymatuschak.org/xml-namespaces/sparkle'}
+ARCHIVE_NAME = 'DisplayDials.dmg'
+DOWNLOAD_URL = 'https://teren.in/' + PREFIX + ARCHIVE_NAME
+NO_CACHE = 'no-store, max-age=0'
 
 
 def publish(directory, client=None):
@@ -22,11 +25,11 @@ def publish(directory, client=None):
     state = json.loads((directory / 'publication.json').read_text())
     feed = (directory / 'appcast.xml').read_bytes()
     root = ET.fromstring(feed)
-    latest = max(root.findall('./channel/item'),
-                 key=lambda item: int(item.findtext('sparkle:version', namespaces=NS)))
-    filename = latest.find('enclosure').get('url').removeprefix('https://teren.in/' + PREFIX)
-    if '/' in filename or not filename.startswith('DisplayDials-') or not filename.endswith('.dmg'):
-        raise ValueError('Unexpected update archive name')
+    items = root.findall('./channel/item')
+    if len(items) != 1 or items[0].find('enclosure').get('url') != DOWNLOAD_URL:
+        raise ValueError('The feed must contain one current release at the permanent download URL')
+    latest = items[0]
+    filename = ARCHIVE_NAME
     archive = (directory / filename).read_bytes()
     for name, content in [(filename, archive), ('appcast.xml', feed)]:
         if hashlib.sha256(content).hexdigest() != state['sha256'][name]:
@@ -49,27 +52,52 @@ def publish(directory, client=None):
         raise ValueError('Publisher unexpectedly wrote outside its application prefix')
     print('Verified: publishing credential is restricted to this application prefix')
 
+    def get(name):
+        try:
+            response = client.get_object(Bucket=BUCKET, Key=PREFIX + name)
+            return response['Body'].read(), response['ETag']
+        except ClientError as error:
+            if error.response['ResponseMetadata']['HTTPStatusCode'] != 404:
+                raise
+            return None, None
+
+    current_feed, current_etag = get('appcast.xml')
+    if current_feed != feed and current_etag != state['etag']:
+        raise ValueError('The feed changed before publication; download was not replaced')
+    same_build = False
+    if current_feed:
+        current = max(ET.fromstring(current_feed).findall('./channel/item'),
+                      key=lambda item: int(item.findtext('sparkle:version', namespaces=NS)))
+        current_build = int(current.findtext('sparkle:version', namespaces=NS))
+        next_build = int(latest.findtext('sparkle:version', namespaces=NS))
+        if next_build < current_build:
+            raise ValueError('Refusing to replace a newer release')
+        same_build = next_build == current_build
+        if same_build:
+            signature = '{' + NS['sparkle'] + '}edSignature'
+            old, new = current.find('enclosure'), latest.find('enclosure')
+            if (old.get(signature) != new.get(signature) or old.get('length') != new.get('length')
+                    or current.findtext('sparkle:shortVersionString', namespaces=NS)
+                    != latest.findtext('sparkle:shortVersionString', namespaces=NS)):
+                raise ValueError('A build number cannot be reused for different app bytes')
+
     def put(name, content, content_type, cache_control, condition):
         client.put_object(Bucket=BUCKET, Key=PREFIX + name, Body=content,
                           ContentType=content_type, CacheControl=cache_control,
                           ContentMD5=base64.b64encode(hashlib.md5(content).digest()).decode(),
                           **condition)
 
-    try:
-        put(filename, archive, 'application/x-apple-diskimage', 'public, max-age=31536000, immutable',
-            {'IfNoneMatch': '*'})
-    except ClientError as error:
-        if error.response['ResponseMetadata']['HTTPStatusCode'] != 412:
-            raise
-        existing = client.get_object(Bucket=BUCKET, Key=PREFIX + filename)['Body'].read()
-        if existing != archive:
-            raise ValueError('This version already exists with different bytes; publish a new version') from error
+    existing_archive, archive_etag = get(filename)
+    if same_build and existing_archive is not None and existing_archive != archive:
+        raise ValueError('The current build already has different download bytes')
+    condition = {'IfMatch': archive_etag} if archive_etag else {'IfNoneMatch': '*'}
+    put(filename, archive, 'application/x-apple-diskimage', NO_CACHE, condition)
     uploaded = client.get_object(Bucket=BUCKET, Key=PREFIX + filename)['Body'].read()
     if uploaded != archive:
         raise ValueError('Uploaded archive differs from the verified artifact; feed was not changed')
-    condition = {'IfMatch': state['etag']} if state['etag'] else {'IfNoneMatch': '*'}
+    condition = {'IfMatch': current_etag} if current_etag else {'IfNoneMatch': '*'}
     try:
-        put('appcast.xml', feed, 'application/xml; charset=utf-8', 'no-cache, max-age=0, must-revalidate', condition)
+        put('appcast.xml', feed, 'application/xml; charset=utf-8', NO_CACHE, condition)
     except ClientError as error:
         if error.response['ResponseMetadata']['HTTPStatusCode'] != 412:
             raise

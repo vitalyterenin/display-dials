@@ -35,6 +35,9 @@ are not changed just by opening the panel.
 
 ## Install or build locally
 
+Download the current release from the permanent [DisplayDials.dmg](https://teren.in/updates/display-dials/DisplayDials.dmg) link.
+Each publication replaces this file; the download name does not include a version.
+
 Open the downloaded DMG, drag **Display Dials.app** onto the **Applications**
 shortcut, then eject the disk image and open the installed app. You can instead
 copy it to a writable location such as `~/Applications`. Builds currently use ad hoc code

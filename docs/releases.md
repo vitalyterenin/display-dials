@@ -19,14 +19,17 @@ check the workflow result and published appcast for that.
 | `version` | Three-part user-facing version, copied to `CFBundleShortVersionString` |
 | `build` | Positive, increasing integer string, copied to `CFBundleVersion` |
 | `feedURL` | Stable appcast URL |
-| `downloadURLPrefix` | HTTPS prefix for versioned archives; `feedURL` must equal this plus `appcast.xml` |
+| `downloadURLPrefix` | HTTPS prefix for the permanent download; `feedURL` must equal this plus `appcast.xml` |
 | `publicEDKey` | Base64-encoded 32-byte public Sparkle Ed25519 key |
 | `telemetryDeckAppID` | Public UUID for Display Dials in TelemetryDeck; not an account credential |
 
 The feed is `https://teren.in/updates/display-dials/appcast.xml`. Files are hosted
-in the existing `teren.in` Yandex Object Storage bucket behind Cloudflare. Previous
-feed history is read directly from the Object Storage origin to avoid CDN staleness.
-The repository can remain private; installation archives and the feed are public.
+in the existing `teren.in` Yandex Object Storage bucket behind Cloudflare. The previous
+feed is read directly from the Object Storage origin to avoid CDN staleness.
+The repository can remain private. The public directory contains only
+`DisplayDials.dmg` and `appcast.xml`; releases replace these two objects.
+The permanent download URL is `https://teren.in/updates/display-dials/DisplayDials.dmg`.
+The version/build inside the app and feed still increase so Sparkle can detect updates.
 
 GitHub Actions needs these encrypted repository secrets:
 
@@ -82,8 +85,9 @@ git push origin "$release_tag"
 ```
 
 Creating and pushing the tag starts publication, not just a source backup. Do not
-reuse an existing release tag or replace an already published disk image. If a released
-app is faulty, publish a corrected version with a higher build number.
+reuse an existing release tag or app build number for changed app bytes. Each release
+replaces the permanent disk image. If a released app is faulty, publish a corrected
+version with a higher build number.
 
 ## Workflow behavior
 
@@ -94,10 +98,16 @@ app is faulty, publish a corrected version with a higher build number.
 | Pull request | Yes | No | No |
 | Push to `main` or another ordinary branch | No workflow run | No | No |
 | Push a matching `v*` tag | Yes | Yes | Yes |
-| Manual run on a branch | Yes | Yes | No |
+| Manual run on a branch (default inputs) | Yes | Yes | No |
+| Manual run on `main`, `republish_current: true` | Yes | Yes, reusing published DMG | Yes |
 | Manual run on a tag | Yes | Yes | Yes, because the selected ref is a tag |
 
 Manual runs require the signing secret too. A tag ref must match `release.json`.
+To migrate the current release to the permanent name without rebuilding the DMG
+or incrementing the app version, dispatch on `main` with `republish_current: true`.
+This path verifies the published feed and archive signatures, reuses the exact
+archive bytes, and generates a signed feed containing only that release. Its
+version must match `release.json`. Ordinary new releases still require a higher build.
 Prepared artifacts are named `display-dials-release` and retained for 14 days.
 Pull requests do not access signing or publication secrets. Workflow runs share
 one concurrency group and are queued rather than cancelling an existing release.
@@ -108,8 +118,8 @@ and checks the bundled executable. Packaging then:
 - Verifies the app's code signature, version/build/feed/key, and arm64 architecture.
 - Reads the previous feed and rejects a non-increasing build number.
 - Creates a compressed APFS DMG containing the app and an Applications shortcut,
-  verifies the disk image, and generates an appcast retaining previous DMG entries.
-  Only DMG release entries are carried into the next signed feed.
+  verifies the disk image, and generates a fresh appcast containing only the current release.
+  The archive is always named `DisplayDials.dmg`.
   Delta updates are disabled.
 - Requires the generated entry to specify the `arm64` hardware requirement.
 - Verifies the appcast and archive signatures and records their SHA-256 hashes
@@ -117,18 +127,28 @@ and checks the bundled executable. Packaging then:
 
 The Linux publisher uses the pinned `boto3` version from the workflow. It verifies
 artifact hashes and checks that its credential is denied access outside the app's
-prefix using a non-mutating conditional request. It uploads the archive first,
-reads it back to verify the bytes, then conditionally writes the appcast using the
-previous ETag (or a create-only condition for the first feed).
+prefix using a non-mutating conditional request. Before replacing the download, it verifies that the feed still matches the
+expected ETag and rejects downgrades or reuse of a build for different bytes.
+It conditionally replaces the archive first, reads it back to verify the bytes,
+then conditionally replaces the appcast using the previous ETag. First publication
+uses create-only conditions.
 
-An existing archive is accepted only if its bytes match. A concurrent feed change
-aborts publication unless the existing feed already matches this artifact. Feed
-responses request cache revalidation; versioned disk images are immutable. The publisher
-does not delete objects or modify other website files.
+Both the DMG and feed use `Cache-Control: no-store, max-age=0`; the permanent
+download must not be served from an immutable cache. A concurrent feed change
+aborts publication unless the existing feed already matches this artifact. The
+publisher writes only these two objects and does not modify other website files.
+Historical version-named downloads from before this policy require one-time cleanup.
+
+Two separate storage objects cannot be replaced atomically. A client that retained
+the preceding feed can race a publication and receive a different signed archive.
+Sparkle must reject that mismatch; a subsequent fresh update check can retry. Never
+disable signature verification to hide this failure. Keeping only the current
+release also means there is no historical download or automatic fallback for older
+OS/hardware support branches.
 
 A failed publication may be retried with the same verified artifact. Rebuilding
-can change disk-image bytes; if the versioned DMG already exists with different bytes,
-prepare a new version instead of overwriting it.
+can change disk-image bytes; for an already published build, reuse the existing
+verified DMG or publish a new app build instead.
 
 ## Local build and release preparation
 
