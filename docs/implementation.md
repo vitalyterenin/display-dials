@@ -44,8 +44,12 @@ More options opens a native `NSMenu`, populated from the running state each time
 6. Usage Statistics…
 7. Quit Display Dials.
 
-The menu delegate returns the screen's visible frame as its confinement rectangle.
-The small popover must not constrain the menu's height. Update commands reflect
+`OptionsMenuPresentation` converts the button's bounds through window coordinates
+to a screen point and opens the menu with `in: nil`. This disconnects menu sizing
+from the 288 × 116 point popover. No fixed menu height or per-item sizing is used;
+AppKit places the complete menu within the available screen. A delegate confinement
+rectangle alone did not reliably prevent clipping when the button was inside a
+popover. Update commands reflect
 Sparkle availability; automatic installation is disabled in the menu while automatic
 checking is off. The version row is disabled deliberately because it has no action.
 
@@ -216,3 +220,21 @@ See the [data disclosure](privacy.md) for event names, payloads and vendor stora
 The app privacy manifest conservatively declares interaction data linked to a
 random installation identifier for analytics, without advertising tracking.
 This is not an App Store eligibility assessment; the app still uses private APIs.
+
+### Options menu regression checks
+
+`scripts/test.sh` includes two native checks using the production presenter:
+
+- `MenuPresentationTests.swift` intercepts presentation to require a screen-space
+  anchor and a nil parent view, with 8, 16 and 24 items and nested button offsets.
+  Returning to a popover-relative view fails this check. It also checks offset
+  window origins and an unattached button.
+- `MenuLayoutIntegration.swift` opens a real status-item popover, presents menus of
+  8, 16 and 24 rows, and inspects their accessibility geometry from inside the app.
+  It requires the complete menu height and every row, including the last, to fit
+  within the displayed menu. No accessibility permission or system settings change
+  is needed. AppKit can still scroll a menu that genuinely exceeds screen space.
+
+When changing menu items, also open More options normally and confirm that all
+current commands through Quit are visible without scrolling on a screen with
+sufficient space. Do not infer visibility from the accessibility item list alone.

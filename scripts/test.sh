@@ -15,3 +15,13 @@ swift test "${test_args[@]}"
 binary_dir="$(swift build --scratch-path "$build_dir" --arch arm64 --show-bin-path)"
 "$binary_dir/DisplayDials" --diagnostics
 "$binary_dir/DisplayDials" --smoke-test
+
+# Verify that growing menus escape the small popover and keep a screen-space anchor.
+xcrun swiftc Sources/DisplayDials/OptionsMenuPresentation.swift Tests/MenuPresentationTests.swift \
+    -o "$build_dir/menu-presentation-tests"
+"$build_dir/menu-presentation-tests"
+
+# Inspect real menu/row frames while a status-item popover is open (no AX permission needed).
+xcrun swiftc Sources/DisplayDials/OptionsMenuPresentation.swift Tests/MenuLayoutIntegration.swift \
+    -o "$build_dir/menu-layout-integration"
+"$build_dir/menu-layout-integration"
