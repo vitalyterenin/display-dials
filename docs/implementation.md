@@ -10,6 +10,7 @@
 | `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
 | `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
 | `Sources/UsageTelemetry/` | Consent gate, typed events, memory-only batches and TelemetryDeck transport |
+| `Resources/AppIcon.png` | Approved transparent application icon; build generates all standard and Retina ICNS sizes |
 | `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
 | `release.json` | Version, increasing build number, feed/download URLs, application ID, and public update key |
 | `scripts/release.py` | Bundle metadata, release validation, and signed archive/appcast preparation |
