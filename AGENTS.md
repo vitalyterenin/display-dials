@@ -9,3 +9,11 @@ Keep options menu presentation in `OptionsMenuPresentation`. Open it in screen
 coordinates with no popover parent view; do not introduce a fixed menu height.
 When adding menu items or changing presentation, run `scripts/test.sh`, including
 the menu growth checks, and inspect the current menu through its final item.
+
+# Shared release workflow
+
+For release setup and publication, use the `teren-app-release` skill and the
+[shared publishing guide](https://github.com/vitalyterenin/app-release-kit/blob/main/skills/teren-app-release/references/publishing.md).
+If the skill is unavailable, read the private repository's README for its one-time
+installation, or fetch the shared guide directly. Refresh shared instructions
+before publishing. Keep this app's implementation details in `docs/releases.md`.
