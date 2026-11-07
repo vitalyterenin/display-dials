@@ -1,6 +1,7 @@
 name: Release Display Dials
 
 on:
+  pull_request:
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -35,6 +36,7 @@ jobs:
           "$RUNNER_TEMP/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials" --diagnostics
           "$RUNNER_TEMP/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials" --smoke-test
       - name: Prepare signed update
+        if: github.event_name != 'pull_request'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
@@ -47,6 +49,7 @@ jobs:
             --app "$RUNNER_TEMP/DisplayDials/Display Dials.app" \
             --output "$RUNNER_TEMP/release" --tools "$tools" "${previous_args[@]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
         with:
           name: display-dials-release
           path: ${{ runner.temp }}/release/

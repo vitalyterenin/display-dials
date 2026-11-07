@@ -37,6 +37,18 @@ def publish(directory, client=None):
                       request_checksum_calculation='when_required',
                       response_checksum_validation='when_required'))
 
+    # Check the credential boundary without creating or replacing any object.
+    # An impossible ETag condition prevents mutation even if access is too broad.
+    try:
+        client.put_object(Bucket=BUCKET, Key='updates/display-dials-access-check',
+                          Body=b'', IfMatch='"00000000000000000000000000000000"')
+    except ClientError as error:
+        if error.response['ResponseMetadata']['HTTPStatusCode'] != 403:
+            raise ValueError('Publisher is not restricted to its application prefix') from error
+    else:
+        raise ValueError('Publisher unexpectedly wrote outside its application prefix')
+    print('Verified: publishing credential is restricted to this application prefix')
+
     def put(name, content, content_type, cache_control, condition):
         client.put_object(Bucket=BUCKET, Key=PREFIX + name, Body=content,
                           ContentType=content_type, CacheControl=cache_control,

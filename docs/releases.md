@@ -49,6 +49,14 @@ are immutable. Jobs do not delete objects or change other website files.
 
 The workflow can also be run manually to build and verify an artifact without
 publishing it. Tag names must match the version in `release.json`.
+Pull requests run the build and read-only checks without accessing signing or
+publishing secrets. Publication also checks that the S3 credential cannot write
+outside this app's prefix, using a conditional request that cannot mutate data.
+
+The deployed bucket policy is recorded in `deployment/teren-in-policy.json`.
+Existing IAM/ACL access and public object reads are preserved; the dedicated
+publisher gets only GetObject/PutObject for this app's prefix. Its uploader role
+is assigned on this bucket, not on the cloud folder.
 
 If a release is faulty, fix it and publish a higher version/build. Do not replace
 an already published ZIP. A failed publication can be retried with the same
