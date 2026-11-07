@@ -87,6 +87,17 @@ def create_disk_image(app, archive):
     run('hdiutil', 'verify', archive)
 
 
+def remove_zip_updates(root):
+    channel = root.find('channel')
+    removed = 0
+    for item in list(channel.findall('item')):
+        enclosure = item.find('enclosure')
+        if enclosure is not None and urllib.parse.urlparse(enclosure.get('url', '')).path.lower().endswith('.zip'):
+            channel.remove(item)
+            removed += 1
+    return removed
+
+
 def package(app, output, tools, previous):
     data = config()
     output = pathlib.Path(output).resolve()
@@ -110,9 +121,13 @@ def package(app, output, tools, previous):
     if previous:
         previous = pathlib.Path(previous)
         content = previous.read_bytes()
-        _, versions = read_feed(content)
+        previous_root, versions = read_feed(content)
         if versions and int(data['build']) <= max(versions):
             raise ValueError('New build must be greater than every published build')
+        # Retired ZIP releases must not reappear in the signed update feed.
+        if remove_zip_updates(previous_root):
+            ET.register_namespace('sparkle', NS['sparkle'])
+            content = ET.tostring(previous_root, encoding='utf-8', xml_declaration=True)
         (output / 'appcast.xml').write_bytes(content)
     state_file = pathlib.Path(previous).with_suffix('.state.json') if previous else None
     state = json.loads(state_file.read_text()) if state_file and state_file.exists() else {'etag': None}
