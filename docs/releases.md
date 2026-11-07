@@ -21,6 +21,7 @@ check the workflow result and published appcast for that.
 | `feedURL` | Stable appcast URL |
 | `downloadURLPrefix` | HTTPS prefix for versioned archives; `feedURL` must equal this plus `appcast.xml` |
 | `publicEDKey` | Base64-encoded 32-byte public Sparkle Ed25519 key |
+| `telemetryDeckAppID` | Public UUID for Display Dials in TelemetryDeck; not an account credential |
 
 The feed is `https://teren.in/updates/display-dials/appcast.xml`. Files are hosted
 in the existing `teren.in` Yandex Object Storage bucket behind Cloudflare. Previous
@@ -38,6 +39,12 @@ The public key belongs in `release.json`; private keys and cloud credentials do
 not belong in source, logs, artifacts, or the website. Keep a protected backup of
 the signing key. Existing installations trust this identity; setting up another
 computer is not a reason to generate a replacement key.
+
+TelemetryDeck uses the organization's free plan and namespace `in.teren`. Its
+public App ID is copied into bundle metadata; publishing requires no TelemetryDeck
+account token or new GitHub secret. Release bundles include the app privacy
+manifest. See [usage statistics and privacy](privacy.md) before changing events
+or the consent wording.
 
 Only for a new application identity, generate a key with:
 

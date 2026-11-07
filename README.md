@@ -22,7 +22,7 @@ The panel also opens at launch.
 - **Status:** shows `On · …%`, `Off`, or `Unavailable`. On reflects the system's
   enabled setting; it is not a measurement of the screen's current color.
 - **More options (…):** shows the installed version, update commands and preferences,
-  and **Quit Display Dials**. The version row is informational and cannot be clicked.
+  **Usage Statistics…**, and **Quit Display Dials**. The version row is informational and cannot be clicked.
 
 The slider is disabled when Night Shift is off. When Night Shift is unavailable,
 both controls are disabled; hover over the status for diagnostic details.
@@ -73,8 +73,24 @@ is unavailable in the menu while automatic checks are off.
 Scheduled checks use a four-hour interval while the app is running. Installation
 can require quitting the app or granting permission; it is not guaranteed to happen
 immediately after a check. Both the appcast and update archives require signatures.
-Update requests contact the update host. The app has no analytics and disables
-Sparkle system profiling.
+Update requests contact the update host. Sparkle system profiling is disabled.
+
+## Optional usage statistics
+
+On the first launch of a build with statistics support, Display Dials asks whether
+to share usage statistics with the developer through TelemetryDeck. This includes
+existing users upgrading from a version without statistics. Nothing is collected
+or sent before consent, and declining does not affect any app features.
+
+Use **More options (…) > Usage Statistics… > Share Usage Statistics** to change
+your choice. Turning sharing off discards unsent events, cancels outstanding
+requests where possible, and resets the local random installation identifier.
+It does not remove events already received by TelemetryDeck.
+
+The app sends a small explicit set of usage events, selected update preferences,
+app/macOS versions, timestamps and random identifiers. It does not use automatic
+screen capture, hardware identifiers, or collect file contents or personal contact
+details. Read the [complete data and storage disclosure](docs/privacy.md).
 
 ## Resource use
 
@@ -85,7 +101,7 @@ can therefore take several seconds to appear in an already open panel.
 Closing the panel stops this polling; Sparkle's update scheduler remains separate.
 
 A short local idle sample recorded about 0.005% of one CPU core and 19.3 MiB of
-physical footprint. These are observations on one machine, not a battery-life
+physical footprint. These measurements predate optional statistics. They are observations on one machine, not a battery-life
 promise. See the [measurement details and limitations](docs/implementation.md#local-review-2026-11-07).
 
 ## Diagnostics and limitations

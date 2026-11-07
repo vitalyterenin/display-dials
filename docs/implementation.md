@@ -7,6 +7,9 @@
 | `Sources/DisplayDials/main.swift` | Menu bar item, panel, More options menu, and diagnostic entry points |
 | `Sources/NightShiftBridge/` | Objective-C adapter for the private Night Shift API |
 | `Sources/DisplayDials/UpdateController.swift` | Sparkle startup, availability, and preferences |
+| `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
+| `Sources/UsageTelemetry/` | Consent gate, typed events, memory-only batches and TelemetryDeck transport |
+| `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
 | `release.json` | Version, increasing build number, feed URL, archive URL prefix, and public update key |
 | `scripts/release.py` | Bundle metadata, release validation, and signed archive/appcast preparation |
 | `scripts/build-app.sh` | Release build, bundled Sparkle framework, and code signing |
@@ -36,7 +39,8 @@ More options opens a native `NSMenu`, populated from the running state each time
 2. Check for Updates…
 3. Check for Updates Automatically.
 4. Install Updates Automatically.
-5. Quit Display Dials.
+5. Usage Statistics…
+6. Quit Display Dials.
 
 The menu delegate returns the screen's visible frame as its confinement rectangle.
 The small popover must not constrain the menu's height. Update commands reflect
@@ -77,6 +81,9 @@ The app has no continuous animation/rendering loop, sleep-prevention assertion,
 or explicit App Nap opt-out. Sparkle's scheduler is independent of the panel timer;
 update checking, downloading and installation can temporarily use resources.
 Timer policy follows [Apple's energy-efficiency guidance](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/Timers.html).
+Opted-in usage statistics use a separate one-shot batching timer only after events;
+they add no continuous polling or session-duration timer. The measurements below
+predate this integration.
 
 ### Local review, 2026-11-07
 
@@ -135,9 +142,9 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 "$app_binary" --smoke-test --snapshot /tmp/display-dials-panel.png
 ```
 
-`test.sh` builds a debug executable, prints Night Shift diagnostics, then initializes
-the UI and exits. It is an integration smoke check, not a unit-test suite. Neither
-path writes Night Shift settings or starts the updater. The build script creates
+`test.sh` builds a debug executable, runs the isolated consent/payload unit tests,
+prints Night Shift diagnostics, then initializes the UI and exits. Neither
+diagnostic path writes Night Shift settings, starts the updater, or sends statistics. The build script creates
 and signs the release bundle and verifies its code signature.
 
 `--diagnostics` emits JSON containing app name/version, Night Shift support,
@@ -158,3 +165,23 @@ configuration, or compatibility with future macOS releases. Manual checks should
 cover switching Night Shift, selecting slider positions, reopening the panel after
 external changes, and opening the complete options menu through Quit. Restore the
 original Night Shift settings after a manual write check.
+
+## Optional statistics
+
+`UsageTelemetry` is a main-actor consent gate. Its transport is not even created
+until consent is saved and a batch is ready. The executable enables the gate only
+inside a configured app bundle during normal launches, not diagnostic or smoke runs.
+`StatisticsPreferences` explains the collected fields before opt-in and exposes
+the same choice through More options. Closing the first prompt saves a refusal.
+
+The implementation uses the official HTTPS Ingest API v2 without importing the
+TelemetryDeck SDK, which otherwise adds extensive default metadata and a repeating
+upload timer. Events are a typed enum with fixed parameters; no general-purpose
+string/error collector is exposed. A maximum of 50 events stays in memory for an
+approximately one-minute batch; no events are saved to disk or retried.
+Disabling cancels the timer and transport and resets the installation ID.
+See the [data disclosure](privacy.md) for event names, payloads and vendor storage limits.
+
+The app privacy manifest conservatively declares interaction data linked to a
+random installation identifier for analytics, without advertising tracking.
+This is not an App Store eligibility assessment; the app still uses private APIs.

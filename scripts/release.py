@@ -14,6 +14,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -35,6 +36,7 @@ def config():
             raise ValueError(f'{key} must be an HTTPS URL without a query or fragment')
     if data['feedURL'] != data['downloadURLPrefix'] + 'appcast.xml':
         raise ValueError('feedURL must be downloadURLPrefix + appcast.xml')
+    uuid.UUID(data['telemetryDeckAppID'])
     return data
 
 
@@ -46,6 +48,7 @@ def write_plist(path):
         CFBundlePackageType='APPL', CFBundleShortVersionString=data['version'],
         CFBundleVersion=data['build'], LSMinimumSystemVersion='13.0',
         LSUIElement=True, NSHighResolutionCapable=True,
+        TelemetryDeckAppID=data['telemetryDeckAppID'],
         SUFeedURL=data['feedURL'], SUPublicEDKey=data['publicEDKey'],
         SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=True,
         SUScheduledCheckInterval=14400, SUEnableSystemProfiling=False,
@@ -109,6 +112,7 @@ def package(app, output, tools, previous):
     for key, expected in [('CFBundleVersion', data['build']),
                           ('CFBundleShortVersionString', data['version']),
                           ('SUPublicEDKey', data['publicEDKey']),
+                          ('TelemetryDeckAppID', data['telemetryDeckAppID']),
                           ('SUFeedURL', data['feedURL'])]:
         if plist.get(key) != expected:
             raise ValueError(f'Built app has unexpected {key}; rebuild it')
