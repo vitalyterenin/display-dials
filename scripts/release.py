@@ -61,7 +61,8 @@ def write_plist(path):
     values = dict(
         CFBundleName='Display Dials', CFBundleDisplayName='Display Dials',
         CFBundleIdentifier=ACCOUNT, CFBundleExecutable='DisplayDials',
-        CFBundlePackageType='APPL', CFBundleShortVersionString=data['version'],
+        CFBundlePackageType='APPL', CFBundleIconFile='AppIcon.icns',
+        CFBundleShortVersionString=data['version'],
         CFBundleVersion=data['build'], LSMinimumSystemVersion='13.0',
         LSUIElement=True, NSHighResolutionCapable=True,
         TelemetryDeckAppID=data['telemetryDeckAppID'],

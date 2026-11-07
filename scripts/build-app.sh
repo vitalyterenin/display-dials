@@ -37,6 +37,15 @@ done
 python3 scripts/release.py plist "$app_dir/Contents/Info.plist"
 mkdir -p "$app_dir/Contents/Resources"
 cp Resources/PrivacyInfo.xcprivacy "$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
+# Compile all standard and Retina icon sizes from the approved transparent source.
+iconset="$staging/AppIcon.iconset"
+mkdir -p "$iconset"
+for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" Resources/AppIcon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    retina=$((size * 2))
+    sips -z "$retina" "$retina" Resources/AppIcon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil --convert icns "$iconset" --output "$app_dir/Contents/Resources/AppIcon.icns"
 # Finder / file providers may add this attribute to an existing generated bundle.
 # Remove only Finder metadata; do not remove quarantine or other security metadata.
 xattr -dr com.apple.FinderInfo "$app_dir" 2>/dev/null || true
