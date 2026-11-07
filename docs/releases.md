@@ -102,7 +102,7 @@ and checks the bundled executable. Packaging then:
 - Reads the previous feed and rejects a non-increasing build number.
 - Creates a compressed APFS DMG containing the app and an Applications shortcut,
   verifies the disk image, and generates an appcast retaining previous DMG entries.
-  Retired ZIP entries are removed before the feed is signed.
+  Only DMG release entries are carried into the next signed feed.
   Delta updates are disabled.
 - Requires the generated entry to specify the `arm64` hardware requirement.
 - Verifies the appcast and archive signatures and records their SHA-256 hashes
@@ -175,8 +175,7 @@ Open the DMG and drag the app onto its Applications shortcut, then eject the ima
 and launch the installed copy. The same signed DMG is used for Sparkle updates.
 Do not run the app directly from the read-only disk image. A writable location
 such as `~/Applications` can be used instead when installing for one user.
-Version 0.5.0's ZIP is retired from distribution. Already installed copies can
-install current DMG updates without reinstallation; the old download is not needed.
+Already installed copies can install current DMG updates without reinstallation.
 Current bundles use ad hoc app code signing and
 are not notarized; the first downloaded launch may require approval through
 **System Settings > Privacy & Security > Open Anyway**.
