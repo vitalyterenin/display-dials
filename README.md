@@ -1,63 +1,108 @@
 # Display Dials
 
-A compact macOS menu bar app for display warmth through Night Shift.
+A small macOS menu bar app for adjusting display warmth with Night Shift.
+The interface uses native AppKit controls and a system sun symbol.
 
-## Prototype status: 0.5.0
+## Requirements
 
-- A compact native AppKit panel with a system sun symbol in the menu bar.
-- Night Shift status and controls stay in the panel; updates and Quit are in the
-  standard More options menu. Layout, controls, and symbols use macOS components.
-- A Night Shift on/off switch and a warmth slider with exactly 10 selectable
-  positions, including both endpoints. An existing strength between positions
-  remains unchanged until adjusted.
-- The macOS Night Shift schedule is preserved. Changes apply globally through macOS
-  and persist after the app quits.
-- At launch, the app only reads settings. Changes require user action.
-- One stable update feed hosted at `https://teren.in/updates/display-dials/appcast.xml`.
-- Automatic update checks and installation can be changed in More options.
-- There is no analytics or system profiling. Update requests contact the update host.
+- An Apple Silicon Mac running macOS 13 or later. Distributed builds are arm64 only.
+- Night Shift must be available on the current system for warmth controls to work.
+- Building from source requires Swift 6 or later through Xcode or Command Line
+  Tools. The first build downloads the pinned Sparkle 2.10.1 dependency.
 
-## Build and validate
+## Using the app
 
-Requires an Apple Silicon Mac, macOS 13+, and Swift 6+ through Xcode or Command Line
-Tools. Intel Macs are not supported. Sparkle 2.10.1 is pinned through Swift Package
-Manager; the first build needs network access to download it.
+Open Display Dials, then click the sun in the menu bar to show or hide its panel.
+The panel also opens at launch.
+
+- **Night Shift switch:** enables or disables the system setting.
+- **Warmth slider:** selects one of 10 positions from Cooler to Warmer. A change
+  is applied when you release the slider. The percentage shows system strength,
+  not a calibrated color temperature.
+- **Status:** shows `On · …%`, `Off`, or `Unavailable`. On reflects the system's
+  enabled setting; it is not a measurement of the screen's current color.
+- **More options (…):** shows the installed version, update commands and preferences,
+  and **Quit Display Dials**. The version row is informational and cannot be clicked.
+
+The slider is disabled when Night Shift is off. When Night Shift is unavailable,
+both controls are disabled; hover over the status for diagnostic details.
+An unsuccessful setting change displays an error in the status line.
+
+Changes use macOS Night Shift globally, preserve its schedule, and persist after
+Display Dials quits. Display Dials has no independent schedule, brightness control,
+or per-monitor settings. Existing strength values between the slider's positions
+are not changed just by opening the panel.
+
+## Install or build locally
+
+For a supplied release archive, extract **Display Dials.app**, copy it to a writable
+location such as `~/Applications`, and open it. Builds currently use ad hoc code
+signing and are not notarized. A downloaded copy may require approval through
+**System Settings > Privacy & Security > Open Anyway** on its first launch.
+
+To build from a checkout, run these commands in the repository root:
 
 ```sh
-# Build and run read-only diagnostics and a UI smoke check.
+# Compile, print read-only diagnostics, and initialize the UI without changing Night Shift.
 bash scripts/test.sh
-# Build and sign the local app bundle.
+# Build an arm64 release bundle, include Sparkle, and verify its code signature.
 bash scripts/build-app.sh
-```
-
-The local app bundle is built at `~/Library/Developer/DisplayDials/Display Dials.app`.
-It is built outside Documents because that directory's file provider adds metadata
-that invalidates the app signature. Override the destination with
-`DISPLAY_DIALS_OUTPUT_DIR`. Build scripts keep their cache at
-`~/Library/Developer/DisplayDials/Build` to avoid the same file-provider delays;
-override it with `DISPLAY_DIALS_BUILD_DIR`. The bundle includes Sparkle and uses a
-free ad hoc code signature, without Apple notarization. The first downloaded
-installation may require **System Settings > Privacy & Security > Open Anyway**.
-Automatic updates are authenticated with the app's Ed25519 key.
-
-```sh
-# Read-only Night Shift diagnostics; no display changes.
-swift run DisplayDials --diagnostics
-# Initialize the UI and exit without writing display settings.
-swift run DisplayDials --smoke-test
-# Optionally save a PNG of the panel during the smoke check.
-swift run DisplayDials --smoke-test --snapshot /tmp/display-dials-panel.png
-# Open the panel from the built app.
+# Launch the built application.
 open "$HOME/Library/Developer/DisplayDials/Display Dials.app"
 ```
 
-## Limitations
+The build script replaces its existing output bundle. By default, the bundle is at
+`~/Library/Developer/DisplayDials/Display Dials.app` and the build cache is at
+`~/Library/Developer/DisplayDials/Build`. They live outside Documents to avoid
+file-provider metadata invalidating signatures and slowing cache access.
+Override them with `DISPLAY_DIALS_OUTPUT_DIR` and `DISPLAY_DIALS_BUILD_DIR`.
 
-Night Shift uses the private CoreBrightness API. Apple may change it in any macOS
-release. The adapter checks method availability and data formats, disabling controls
-when incompatible. This is a prototype for direct distribution, not a ready-to-submit
-Mac App Store app. Changing settings simultaneously in Shifty or other utilities
-can cause competing updates; Display Dials rereads the system state.
+## Updates and version
 
-See [docs/implementation.md](docs/implementation.md) for implementation details.
-See [docs/releases.md](docs/releases.md) for publishing and signing-key setup.
+The first row of **More options (…)** displays the running app's version from its
+bundle metadata. [release.json](release.json) defines the source version and build
+number; it does not prove that a corresponding release has already been published.
+
+Sparkle checks the [stable update feed](https://teren.in/updates/display-dials/appcast.xml).
+Automatic checks and automatic installation default to enabled; saved user
+preferences take precedence. Use **Check for Updates…** to check manually, or
+change the two automatic-update preferences in the same menu. Automatic installation
+is unavailable in the menu while automatic checks are off.
+
+Scheduled checks use a four-hour interval while the app is running. Installation
+can require quitting the app or granting permission; it is not guaranteed to happen
+immediately after a check. Both the appcast and update archives require signatures.
+Update requests contact the update host. The app has no analytics and disables
+Sparkle system profiling.
+
+## Resource use
+
+The warmth effect is handled by macOS. Display Dials polls Night Shift only while
+its panel is visible, every five seconds with one second of timer tolerance.
+User actions and reopening refresh immediately. Changes made by another utility
+can therefore take several seconds to appear in an already open panel.
+Closing the panel stops this polling; Sparkle's update scheduler remains separate.
+
+A short local idle sample recorded about 0.005% of one CPU core and 19.3 MiB of
+physical footprint. These are observations on one machine, not a battery-life
+promise. See the [measurement details and limitations](docs/implementation.md#local-review-2026-11-07).
+
+## Diagnostics and limitations
+
+After building the bundle, these commands read settings without changing Night Shift
+or starting the updater:
+
+```sh
+app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials"
+"$app_binary" --diagnostics
+"$app_binary" --smoke-test
+"$app_binary" --smoke-test --snapshot /tmp/display-dials-panel.png
+```
+
+Night Shift access uses the private CoreBrightness API. macOS changes can break
+compatibility; the adapter checks method signatures and status layout before use.
+Other Night Shift utilities can compete with setting changes. This is a prototype
+for direct distribution and is not ready for Mac App Store submission.
+
+See [implementation and validation](docs/implementation.md) for the code structure,
+and [release operations](docs/releases.md) for signing, packaging, and publication.

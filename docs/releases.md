@@ -1,90 +1,189 @@
-# Stable releases
+# Release operations
 
-Display Dials supports Apple Silicon Macs on macOS 13 or later. There is one
-stable feed and no beta channel. Only explicit version tags publish updates.
-The source repository can remain private; ready-to-install archives are public.
+Display Dials ships arm64 builds for Apple Silicon Macs on macOS 13 or later.
+There is one stable update feed and no beta channel. Source changes pushed to
+`main` do not publish an application update. The workflow publishes for tag refs;
+a normal release uses a pushed `v*` tag matching `release.json`.
 
-## One-time configuration
+The workflow stores prepared artifacts in GitHub Actions and publishes archives
+to Object Storage. It does not create a GitHub Release or attach GitHub Release
+assets. A source version in this repository does not establish publication status;
+check the workflow result and published appcast for that.
 
-The update URL is `https://teren.in/updates/display-dials/appcast.xml`. The existing
-`teren.in` Yandex Object Storage bucket hosts the files behind Cloudflare.
-Publishing requires these encrypted GitHub Actions repository secrets:
+## Configuration and signing identity
 
-- `SPARKLE_PRIVATE_KEY`: the exported Sparkle signing key for the
+[release.json](../release.json) is the source of truth for:
+
+| Field | Meaning |
+| --- | --- |
+| `version` | Three-part user-facing version, copied to `CFBundleShortVersionString` |
+| `build` | Positive, increasing integer string, copied to `CFBundleVersion` |
+| `feedURL` | Stable appcast URL |
+| `downloadURLPrefix` | HTTPS prefix for versioned archives; `feedURL` must equal this plus `appcast.xml` |
+| `publicEDKey` | Base64-encoded 32-byte public Sparkle Ed25519 key |
+
+The feed is `https://teren.in/updates/display-dials/appcast.xml`. Files are hosted
+in the existing `teren.in` Yandex Object Storage bucket behind Cloudflare. Previous
+feed history is read directly from the Object Storage origin to avoid CDN staleness.
+The repository can remain private; installation archives and the feed are public.
+
+GitHub Actions needs these encrypted repository secrets:
+
+- `SPARKLE_PRIVATE_KEY`: the exported private Sparkle signing key for the
   `com.vitalyterenin.displaydials` Keychain account.
-- `YC_ACCESS_KEY_ID` and `YC_SECRET_ACCESS_KEY`: a dedicated service account's
-  static S3 key, restricted to the `updates/display-dials/` prefix in `teren.in`.
+- `YC_ACCESS_KEY_ID` and `YC_SECRET_ACCESS_KEY`: the dedicated publisher's static
+  S3 credentials, restricted to `updates/display-dials/` in `teren.in`.
 
-The public Sparkle key is committed in `release.json`. Never put a private signing
-key or a cloud credential in the repository, logs, build artifacts, or website.
-Keep a separate protected backup of the signing key. Existing installations rely
-on this key; do not generate a new key when setting up another computer.
+The public key belongs in `release.json`; private keys and cloud credentials do
+not belong in source, logs, artifacts, or the website. Keep a protected backup of
+the signing key. Existing installations trust this identity; setting up another
+computer is not a reason to generate a replacement key.
 
-Generate a key only for a new application identity:
+Only for a new application identity, generate a key with:
 
 ```sh
 tools="$(bash scripts/sparkle-tools.sh)"
 "$tools/bin/generate_keys" --account com.vitalyterenin.displaydials
 ```
 
-The tools downloader verifies the pinned Sparkle release's SHA-256. Local signing
-uses Keychain; CI passes the exported key through stdin to Sparkle's tools.
+The downloader pins Sparkle 2.10.1 and verifies its archive's SHA-256. Local
+packaging uses Keychain unless `SPARKLE_PRIVATE_KEY` is supplied in the environment.
+CI passes that secret to Sparkle tools through stdin.
+
+[deployment/teren-in-policy.json](../deployment/teren-in-policy.json) records the
+bucket policy for preserving public reads and existing access while limiting the
+dedicated publisher to GetObject/PutObject on the application prefix. Committing
+that file does not apply cloud permissions. The publisher's uploader role must be
+assigned on this bucket, rather than granting access across the cloud folder.
 
 ## Publish a version
 
-1. Update `version` and increase the integer `build` in `release.json`.
-2. Commit the application changes, then push a matching tag, such as `v0.5.0`.
-3. Wait for the **Release Display Dials** GitHub Actions workflow to finish.
+1. Update `version` and increase `build` in `release.json`. Use a new version and a
+   build greater than every build already in the published feed.
+2. Run validation and local checks, then commit and push the source changes.
+3. Push a new tag equal to `v` plus the configured version.
+4. Wait for **Release Display Dials** to finish both build and publish jobs.
 
-The macOS job runs read-only checks, builds an arm64 app, verifies its code
-signature, archives it, and generates a signed appcast. It reads previous release
-history directly from Object Storage, avoiding a stale CDN copy. Existing appcast
-entries are retained, and downgrades are rejected. Delta updates are disabled.
-
-The publishing job uploads the versioned ZIP without replacing any existing
-version, reads it back to verify its contents, then conditionally updates the
-appcast last. A concurrent feed change aborts publication rather than overwriting
-another release. The appcast uses revalidation cache headers; versioned archives
-are immutable. Jobs do not delete objects or change other website files.
-
-The workflow can also be run manually to build and verify an artifact without
-publishing it. Tag names must match the version in `release.json`.
-Pull requests run the build and read-only checks without accessing signing or
-publishing secrets. Publication also checks that the S3 credential cannot write
-outside this app's prefix, using a conditional request that cannot mutate data.
-
-The deployed bucket policy is recorded in `deployment/teren-in-policy.json`.
-Existing IAM/ACL access and public object reads are preserved; the dedicated
-publisher gets only GetObject/PutObject for this app's prefix. Its uploader role
-is assigned on this bucket, not on the cloud folder.
-
-If a release is faulty, fix it and publish a higher version/build. Do not replace
-an already published ZIP. A failed publication can be retried with the same
-verified artifact; a fresh rebuild may produce different archive bytes and then
-requires a new version.
-
-## Initial installation and later updates
-
-Install the first updater-enabled version manually on each Mac, copying the app
-to a writable location such as `~/Applications`. Without Developer ID/notarization,
-the first downloaded launch may require **Privacy & Security > Open Anyway**.
-Sparkle then verifies and installs updates from the stable feed. Checks run while
-the app is running; installation may wait until the app quits or needs permission.
-
-## Local release preparation
+For example, after committing and pushing the intended source revision:
 
 ```sh
+set -euo pipefail
+python3 scripts/release.py validate
+release_tag="$(python3 -c 'import json; print("v" + json.load(open("release.json"))["version"])')"
+git tag "$release_tag"
+git push origin "$release_tag"
+```
+
+Creating and pushing the tag starts publication, not just a source backup. Do not
+reuse an existing release tag or replace an already published ZIP. If a released
+app is faulty, publish a corrected version with a higher build number.
+
+## Workflow behavior
+
+[.github/workflows/release.yml](../.github/workflows/release.yml) defines these paths:
+
+| Trigger | Build and read-only checks | Signed artifact | Publish to Object Storage |
+| --- | --- | --- | --- |
+| Pull request | Yes | No | No |
+| Push to `main` or another ordinary branch | No workflow run | No | No |
+| Push a matching `v*` tag | Yes | Yes | Yes |
+| Manual run on a branch | Yes | Yes | No |
+| Manual run on a tag | Yes | Yes | Yes, because the selected ref is a tag |
+
+Manual runs require the signing secret too. A tag ref must match `release.json`.
+Prepared artifacts are named `display-dials-release` and retained for 14 days.
+Pull requests do not access signing or publication secrets. Workflow runs share
+one concurrency group and are queued rather than cancelling an existing release.
+
+The macOS job validates metadata, runs `scripts/test.sh`, builds the arm64 app,
+and checks the bundled executable. Packaging then:
+
+- Verifies the app's code signature, version/build/feed/key, and arm64 architecture.
+- Reads the previous feed and rejects a non-increasing build number.
+- Creates the versioned ZIP and generates an appcast retaining previous entries.
+  Delta updates are disabled.
+- Requires the generated entry to specify the `arm64` hardware requirement.
+- Verifies the appcast and archive signatures and records their SHA-256 hashes
+  with the previous feed's ETag in `publication.json`.
+
+The Linux publisher uses the pinned `boto3` version from the workflow. It verifies
+artifact hashes and checks that its credential is denied access outside the app's
+prefix using a non-mutating conditional request. It uploads the archive first,
+reads it back to verify the bytes, then conditionally writes the appcast using the
+previous ETag (or a create-only condition for the first feed).
+
+An existing archive is accepted only if its bytes match. A concurrent feed change
+aborts publication unless the existing feed already matches this artifact. Feed
+responses request cache revalidation; versioned ZIPs are immutable. The publisher
+does not delete objects or modify other website files.
+
+A failed publication may be retried with the same verified artifact. Rebuilding
+can change ZIP bytes; if the versioned ZIP already exists with different bytes,
+prepare a new version instead of overwriting it.
+
+## Local build and release preparation
+
+Run from the repository root on an Apple Silicon Mac with Swift 6+, Python 3,
+Xcode or Command Line Tools, and access to the existing signing identity:
+
+```sh
+python3 scripts/release.py validate
 bash scripts/test.sh
 bash scripts/build-app.sh
+```
+
+The scripts use these optional environment overrides:
+
+| Variable | Default / purpose |
+| --- | --- |
+| `DISPLAY_DIALS_BUILD_DIR` | `~/Library/Developer/DisplayDials/Build`; SwiftPM cache |
+| `DISPLAY_DIALS_OUTPUT_DIR` | `~/Library/Developer/DisplayDials`; parent of the output app bundle |
+| `DISPLAY_DIALS_TOOLS_DIR` | `~/Library/Developer/DisplayDials/Sparkle-2.10.1`; Sparkle tool cache |
+| `DISPLAY_DIALS_SIGN_IDENTITY` | `-`; ad hoc app code signing, separate from Sparkle update signing |
+
+The output bundle is replaced by `build-app.sh`; release packaging requires a new,
+empty artifact directory. The following prepares a signed update locally without
+uploading it. It handles both an existing feed and a first-release 404:
+
+```sh
+set -euo pipefail
 tools="$(bash scripts/sparkle-tools.sh)"
-python3 scripts/release.py previous /tmp/display-dials-previous.xml
-# If a previous feed was downloaded, add --previous /tmp/display-dials-previous.xml.
-# Use a new, empty output directory for every packaging attempt.
+release_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/display-dials-release.XXXXXX")"
+python3 scripts/release.py previous "$release_work_dir/previous.xml"
+previous_args=()
+if [[ -f "$release_work_dir/previous.xml" ]]; then
+    previous_args+=(--previous "$release_work_dir/previous.xml")
+fi
 python3 scripts/release.py package \
   --app "$HOME/Library/Developer/DisplayDials/Display Dials.app" \
-  --output "$HOME/Library/Developer/DisplayDials/PreparedRelease" \
-  --tools "$tools"
+  --output "$release_work_dir/artifacts" \
+  --tools "$tools" "${previous_args[@]}"
 ```
+
+This shell example works in Bash and Zsh. If the app output directory was
+overridden, pass that bundle's actual path to `--app`. Keep `previous.xml` together
+with its generated `previous.state.json`: the latter supplies the ETag used by
+publication. The prepared artifact directory contains the ZIP, signed appcast and
+`publication.json`. `scripts/publish.py` is the separate upload step used by CI;
+it needs the S3 credentials and the workflow's Python dependencies.
+
+## Installation and update behavior
+
+Install the first updater-enabled version manually on each Mac in a writable
+location such as `~/Applications`. Current bundles use ad hoc app code signing and
+are not notarized; the first downloaded launch may require approval through
+**System Settings > Privacy & Security > Open Anyway**.
+
+Sparkle checks while Display Dials runs, on a four-hour scheduled interval by
+default. Automatic checks and automatic installation default to enabled, with
+saved user preferences taking precedence. Both preferences and a manual check
+are available in More options. Installation may wait for quit or permission.
+The UI's installed version comes from the running bundle, not the latest appcast.
+
+Archive and appcast Ed25519 signatures authenticate updates separately from the
+app's code signature. Bundle settings require signed feeds, disable the signed-feed
+expiration fallback, and request update verification before extraction. Sparkle
+system profiling is disabled.
 
 ## Adding Developer ID later
 
