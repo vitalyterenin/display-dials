@@ -13,7 +13,8 @@ The interface uses native AppKit controls and a system sun symbol.
 ## Using the app
 
 Open Display Dials, then click the sun in the menu bar to show or hide its panel.
-The panel also opens at launch.
+The panel also opens on a normal launch. Automatic launch at login keeps the app
+in the menu bar without opening the panel.
 
 - **Night Shift switch:** enables or disables the system setting.
 - **Warmth slider:** selects one of 10 positions from Cooler to Warmer. A change
@@ -21,8 +22,9 @@ The panel also opens at launch.
   not a calibrated color temperature.
 - **Status:** shows `On · …%`, `Off`, or `Unavailable`. On reflects the system's
   enabled setting; it is not a measurement of the screen's current color.
-- **More options (…):** shows the installed version, update commands and preferences,
-  **Usage Statistics…**, and **Quit Display Dials**. The version row is informational and cannot be clicked.
+- **More options (…):** shows the installed version, **Launch at Login**, update
+  commands and preferences, **Usage Statistics…**, and **Quit Display Dials**.
+  The version row is informational and cannot be clicked.
 
 The slider is disabled when Night Shift is off. When Night Shift is unavailable,
 both controls are disabled; hover over the status for diagnostic details.
@@ -32,6 +34,23 @@ Changes use macOS Night Shift globally, preserve its schedule, and persist after
 Display Dials quits. Display Dials has no independent schedule, brightness control,
 or per-monitor settings. Existing strength values between the slider's positions
 are not changed just by opening the panel.
+
+## Launch at login
+
+Use **More options (…) > Launch at Login** to start Display Dials automatically
+when you sign in to macOS, or turn it off again. The app does not add itself to
+Login Items automatically. Turning this setting off leaves the current app
+running and prevents its automatic launch on subsequent logins.
+
+The checkmark reflects macOS Login Items rather than a separate saved app setting.
+If macOS requires approval, the menu shows **Launch at Login (Approval Required)**
+with a mixed mark and provides **Allow in System Settings…**. You can grant approval
+in **System Settings > General > Login Items & Extensions**, or turn the setting off
+in the app. Names in System Settings can vary with the macOS version.
+
+Install the app on a writable disk before changing this preference. The setting
+is unavailable from a read-only DMG or a raw SwiftPM executable. Diagnostics and
+smoke checks never register or unregister login items.
 
 ## Install or build locally
 

@@ -14,6 +14,7 @@ final class PanelController: NSViewController, NSMenuDelegate {
     static let size = NSSize(width: 288, height: 116)
     let warmth = DDWarmthClient()
     let updates = UpdateController()
+    let loginItem = LoginItemController()
     private(set) lazy var telemetry = UsageTelemetry(
         appID: Bundle.main.object(forInfoDictionaryKey: "TelemetryDeckAppID") as? String,
         version: AppIdentity.version,
@@ -172,6 +173,20 @@ final class PanelController: NSViewController, NSMenuDelegate {
         let version = menu.addItem(withTitle: "\(AppIdentity.name) · Version \(AppIdentity.version)", action: nil, keyEquivalent: "")
         version.isEnabled = false
         menu.addItem(.separator())
+        let launch = menu.addItem(
+            withTitle: loginItem.requiresApproval ? "Launch at Login (Approval Required)" : "Launch at Login",
+            action: #selector(changeLaunchAtLogin(_:)), keyEquivalent: "")
+        launch.target = self
+        launch.isEnabled = loginItem.isAvailable && !loginItem.isChanging
+        launch.state = loginItem.menuState
+        launch.toolTip = loginItem.isAvailable
+            ? "Start Display Dials in the menu bar when you sign in to macOS."
+            : "Run an installed copy on a writable disk to change launch at login."
+        if loginItem.requiresApproval {
+            let settings = menu.addItem(withTitle: "Allow in System Settings…", action: #selector(openLoginItemSettings), keyEquivalent: "")
+            settings.target = self
+        }
+        menu.addItem(.separator())
         let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
         check.target = self
         check.isEnabled = updates.canCheck
@@ -196,6 +211,34 @@ final class PanelController: NSViewController, NSMenuDelegate {
         // A menu opened from a popover must be allowed to use the full screen.
         screen?.visibleFrame ?? .zero
     }
+
+    @objc private func changeLaunchAtLogin(_ sender: NSMenuItem) {
+        let enable = sender.state == .off
+        Task { @MainActor in
+            do {
+                try await loginItem.setEnabled(enable)
+                if loginItem.requiresApproval {
+                    let alert = NSAlert()
+                    alert.messageText = "Allow Launch at Login"
+                    alert.informativeText = "macOS needs your approval. Allow Display Dials in System Settings → General → Login Items & Extensions. You can also turn launch at login off from this menu."
+                    alert.addButton(withTitle: "Open System Settings")
+                    alert.addButton(withTitle: "Later")
+                    NSApp.activate(ignoringOtherApps: true)
+                    if alert.runModal() == .alertFirstButtonReturn { loginItem.openSettings() }
+                }
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Could Not Change Launch at Login"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "OK")
+                alert.addButton(withTitle: "Open System Settings")
+                NSApp.activate(ignoringOtherApps: true)
+                if alert.runModal() == .alertSecondButtonReturn { loginItem.openSettings() }
+            }
+        }
+    }
+
+    @objc private func openLoginItemSettings() { loginItem.openSettings() }
 
     @objc private func checkForUpdates(_ sender: Any?) {
         if updates.canCheck { telemetry.record(.manualUpdateCheck) }
@@ -250,6 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popover = NSPopover()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let launchedAtLogin = LoginItemController.wasLaunchedAtLogin
         NSApp.setActivationPolicy(.accessory)
         let controller = PanelController()
         popover.contentViewController = controller
@@ -285,11 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller.updates.start()
             controller.telemetry.start()
             controller.recordUpdatePreferences()
-            showPanel(source: .launch)
-            if controller.telemetry.isConfigured && !controller.telemetry.hasChosen {
-                popover.performClose(nil)
-                controller.showStatistics()
-            }
+            if !launchedAtLogin { showPanel(source: .launch) }
         }
     }
 
@@ -305,6 +345,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPanel(source: UsageEvent.PanelSource) {
         guard let button = status.button else { return }
+        if let controller = popover.contentViewController as? PanelController,
+           controller.telemetry.isConfigured && !controller.telemetry.hasChosen {
+            controller.showStatistics()
+            return
+        }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         (popover.contentViewController as? PanelController)?.telemetry.record(.panelOpened(source))
         NSApp.activate(ignoringOtherApps: true)
