@@ -1,0 +1,96 @@
+{
+  "date": "2026-11-07",
+  "method": "macOS proc_pid_rusage v2 cumulative CPU, footprint, wakeup and physical disk I/O counters; CPU is a percentage of one core. Panel state inspected through accessibility.",
+  "limitations": [
+    "Short local samples, not a battery discharge test or a long-term leak test.",
+    "after_open overlaps a 3-second sample stack capture; use after_open_no_sampler for unprofiled observation.",
+    "Restart, warmup, UI transitions and OS activity differ between samples; these numbers do not prove a causal before/after improvement.",
+    "No update download or installation was exercised during these samples."
+  ],
+  "samples": [
+    {
+      "label": "before_open",
+      "pid": 71292,
+      "seconds": 30.005129375,
+      "cpu_seconds": 0.001665787,
+      "cpu_percent_one_core": 0.005551674112719935,
+      "footprint_start_mib": 29.235313415527344,
+      "footprint_end_mib": 29.235313415527344,
+      "resident_mib": 96.6875,
+      "idle_wakeups": 1,
+      "interrupt_wakeups": 30,
+      "disk_read_bytes": 0,
+      "disk_written_bytes": 0
+    },
+    {
+      "label": "before_closed",
+      "pid": 71292,
+      "seconds": 30.005361041,
+      "cpu_seconds": 0.001850363,
+      "cpu_percent_one_core": 0.006166774655607785,
+      "footprint_start_mib": 26.56341552734375,
+      "footprint_end_mib": 26.46966552734375,
+      "resident_mib": 97.828125,
+      "idle_wakeups": 0,
+      "interrupt_wakeups": 4,
+      "disk_read_bytes": 0,
+      "disk_written_bytes": 0
+    },
+    {
+      "label": "after_open",
+      "pid": 71848,
+      "seconds": 30.005388917,
+      "cpu_seconds": 0.004084359,
+      "cpu_percent_one_core": 0.013612084853484254,
+      "footprint_start_mib": 20.360267639160156,
+      "footprint_end_mib": 20.438392639160156,
+      "resident_mib": 81.171875,
+      "idle_wakeups": 0,
+      "interrupt_wakeups": 82,
+      "disk_read_bytes": 0,
+      "disk_written_bytes": 0
+    },
+    {
+      "label": "after_open_no_sampler",
+      "pid": 71848,
+      "seconds": 30.005007292000002,
+      "cpu_seconds": 2.267e-06,
+      "cpu_percent_one_core": 7.555405595933424e-06,
+      "footprint_start_mib": 20.469642639160156,
+      "footprint_end_mib": 20.422767639160156,
+      "resident_mib": 81.15625,
+      "idle_wakeups": 0,
+      "interrupt_wakeups": 1,
+      "disk_read_bytes": 0,
+      "disk_written_bytes": 0
+    },
+    {
+      "label": "after_closed",
+      "pid": 71848,
+      "seconds": 45.005136791999995,
+      "cpu_seconds": 0.056482439,
+      "cpu_percent_one_core": 0.12550220491728445,
+      "footprint_start_mib": 22.141517639160156,
+      "footprint_end_mib": 19.469642639160156,
+      "resident_mib": 84.234375,
+      "idle_wakeups": 1,
+      "interrupt_wakeups": 557,
+      "disk_read_bytes": 12288,
+      "disk_written_bytes": 0
+    },
+    {
+      "label": "after_closed_settled",
+      "pid": 71848,
+      "seconds": 45.002369666999996,
+      "cpu_seconds": 0.002291529,
+      "cpu_percent_one_core": 0.005092018524705303,
+      "footprint_start_mib": 19.329017639160156,
+      "footprint_end_mib": 19.344642639160156,
+      "resident_mib": 84.109375,
+      "idle_wakeups": 0,
+      "interrupt_wakeups": 1,
+      "disk_read_bytes": 0,
+      "disk_written_bytes": 0
+    }
+  ]
+}

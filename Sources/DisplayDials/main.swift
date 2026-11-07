@@ -9,7 +9,7 @@ enum AppIdentity {
 }
 
 @MainActor
-final class PanelController: NSViewController {
+final class PanelController: NSViewController, NSMenuDelegate {
     static let size = NSSize(width: 288, height: 116)
     let warmth = DDWarmthClient()
     let updates = UpdateController()
@@ -156,7 +156,11 @@ final class PanelController: NSViewController {
 
     @objc private func showOptions(_ sender: NSButton) {
         let menu = NSMenu()
+        menu.delegate = self
         menu.autoenablesItems = false
+        let version = menu.addItem(withTitle: "\(AppIdentity.name) · Version \(AppIdentity.version)", action: nil, keyEquivalent: "")
+        version.isEnabled = false
+        menu.addItem(.separator())
         let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
         check.target = self
         check.isEnabled = updates.canCheck
@@ -172,6 +176,11 @@ final class PanelController: NSViewController {
         let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY - 4), in: sender)
+    }
+
+    func confinementRect(for menu: NSMenu, on screen: NSScreen?) -> NSRect {
+        // A menu opened from a popover must be allowed to use the full screen.
+        screen?.visibleFrame ?? .zero
     }
 
     @objc private func checkForUpdates(_ sender: Any?) {
