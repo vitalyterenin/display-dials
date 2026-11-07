@@ -75,7 +75,7 @@ git push origin "$release_tag"
 ```
 
 Creating and pushing the tag starts publication, not just a source backup. Do not
-reuse an existing release tag or replace an already published ZIP. If a released
+reuse an existing release tag or replace an already published disk image. If a released
 app is faulty, publish a corrected version with a higher build number.
 
 ## Workflow behavior
@@ -100,7 +100,8 @@ and checks the bundled executable. Packaging then:
 
 - Verifies the app's code signature, version/build/feed/key, and arm64 architecture.
 - Reads the previous feed and rejects a non-increasing build number.
-- Creates the versioned ZIP and generates an appcast retaining previous entries.
+- Creates a compressed APFS DMG containing the app and an Applications shortcut,
+  verifies the disk image, and generates an appcast retaining previous entries.
   Delta updates are disabled.
 - Requires the generated entry to specify the `arm64` hardware requirement.
 - Verifies the appcast and archive signatures and records their SHA-256 hashes
@@ -114,11 +115,11 @@ previous ETag (or a create-only condition for the first feed).
 
 An existing archive is accepted only if its bytes match. A concurrent feed change
 aborts publication unless the existing feed already matches this artifact. Feed
-responses request cache revalidation; versioned ZIPs are immutable. The publisher
+responses request cache revalidation; versioned disk images are immutable. The publisher
 does not delete objects or modify other website files.
 
 A failed publication may be retried with the same verified artifact. Rebuilding
-can change ZIP bytes; if the versioned ZIP already exists with different bytes,
+can change disk-image bytes; if the versioned DMG already exists with different bytes,
 prepare a new version instead of overwriting it.
 
 ## Local build and release preparation
@@ -163,14 +164,18 @@ python3 scripts/release.py package \
 This shell example works in Bash and Zsh. If the app output directory was
 overridden, pass that bundle's actual path to `--app`. Keep `previous.xml` together
 with its generated `previous.state.json`: the latter supplies the ETag used by
-publication. The prepared artifact directory contains the ZIP, signed appcast and
+publication. The prepared artifact directory contains the DMG, signed appcast and
 `publication.json`. `scripts/publish.py` is the separate upload step used by CI;
 it needs the S3 credentials and the workflow's Python dependencies.
 
 ## Installation and update behavior
 
-Install the first updater-enabled version manually on each Mac in a writable
-location such as `~/Applications`. Current bundles use ad hoc app code signing and
+Open the DMG and drag the app onto its Applications shortcut, then eject the image
+and launch the installed copy. The same signed DMG is used for Sparkle updates.
+Do not run the app directly from the read-only disk image. A writable location
+such as `~/Applications` can be used instead when installing for one user.
+Version 0.5.0's published ZIP remains available; its updater can install later DMG
+releases without reinstallation. Current bundles use ad hoc app code signing and
 are not notarized; the first downloaded launch may require approval through
 **System Settings > Privacy & Security > Open Anyway**.
 

@@ -35,8 +35,9 @@ are not changed just by opening the panel.
 
 ## Install or build locally
 
-For a supplied release archive, extract **Display Dials.app**, copy it to a writable
-location such as `~/Applications`, and open it. Builds currently use ad hoc code
+Open the downloaded DMG, drag **Display Dials.app** onto the **Applications**
+shortcut, then eject the disk image and open the installed app. You can instead
+copy it to a writable location such as `~/Applications`. Builds currently use ad hoc code
 signing and are not notarized. A downloaded copy may require approval through
 **System Settings > Privacy & Security > Open Anyway** on its first launch.
 
