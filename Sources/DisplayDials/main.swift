@@ -1,118 +1,120 @@
 import AppKit
-import DisplayCore
 import NightShiftBridge
-import Darwin
 
 enum AppIdentity {
     static let name = "Display Dials"
-    static let version = "0.3.2"
-}
-
-@MainActor
-func displaySnapshot() -> [[String: Any]] {
-    NSScreen.screens.map { screen in
-        let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-        return ["name": screen.localizedName,
-                "builtIn": CGDisplayIsBuiltin(id) != 0,
-                "currentEDR": screen.maximumExtendedDynamicRangeColorComponentValue,
-                "potentialEDR": screen.maximumPotentialExtendedDynamicRangeColorComponentValue,
-                "brightnessReadback": BrightnessReadback.values(for: id)]
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"
     }
 }
 
 @MainActor
 final class PanelController: NSViewController {
+    static let size = NSSize(width: 288, height: 116)
     let warmth = DDWarmthClient()
-    let boost = BoostController()
-    private let boostSwitch = NSSwitch()
-    private let boostSlider = NSSlider(value: 1 + 0.25 * 4 / 9, minValue: 1, maxValue: 1.25, target: nil, action: nil)
-    private let boostValue = NSTextField(labelWithString: "×1.11")
-    private let screenLabel = NSTextField(wrappingLabelWithString: "")
+    let updates = UpdateController()
     private let warmthToggle = NSSwitch()
     private let warmthSlider = NSSlider(value: 0.5, minValue: 0, maxValue: 1, target: nil, action: nil)
-    private let warmthValue = NSTextField(labelWithString: "—")
-    private let warmthNote = NSTextField(wrappingLabelWithString: "")
-    private let boostNote = NSTextField(wrappingLabelWithString: "")
-    private let errorLabel = NSTextField(wrappingLabelWithString: "")
+    private let statusLabel = NSTextField(labelWithString: "")
+    private var settingError: String?
     private var timer: Timer?
+    private var lastState: PanelState?
+
+    private struct PanelState: Equatable {
+        let available: Bool
+        let enabled: Bool
+        let strength: Double?
+        let diagnostic: String
+        let error: String?
+    }
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 500))
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -18)
-        ])
-        let title = NSTextField(labelWithString: AppIdentity.name)
-        title.font = .systemFont(ofSize: 20, weight: .semibold)
-        stack.addArrangedSubview(title)
-        screenLabel.font = .systemFont(ofSize: 11)
-        screenLabel.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(screenLabel)
-        stack.addArrangedSubview(separator())
+        view = NSView(frame: NSRect(origin: .zero, size: Self.size))
 
-        boostSwitch.target = self
-        boostSwitch.action = #selector(toggleBoost)
-        boostSwitch.setAccessibilityLabel("Brightness Boost")
-        stack.addArrangedSubview(row("Boost · Experimental", control: boostSwitch))
-        boostSlider.target = self
-        boostSlider.action = #selector(changeBoost)
-        boostSlider.numberOfTickMarks = 10
-        boostSlider.allowsTickMarkValuesOnly = true
-        boostSlider.isContinuous = false
-        boostSlider.setAccessibilityLabel("Brightness Boost multiplier")
-        stack.addArrangedSubview(boostSlider)
-        stack.addArrangedSubview(row("Boost level", control: boostValue))
-        boostNote.font = .systemFont(ofSize: 11)
-        boostNote.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(boostNote)
-        stack.addArrangedSubview(separator())
+        let title = NSTextField(labelWithString: "Night Shift")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        statusLabel.font = .systemFont(ofSize: 11)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let heading = NSStackView(views: [title, statusLabel])
+        heading.orientation = .vertical
+        heading.alignment = .leading
+        heading.spacing = 2
+        heading.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         warmthToggle.target = self
         warmthToggle.action = #selector(toggleWarmth)
         warmthToggle.setAccessibilityLabel("Night Shift")
-        stack.addArrangedSubview(row("Warmth · Night Shift", control: warmthToggle))
+        warmthToggle.controlSize = .small
+
+        let more = NSButton(image: NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More options")!,
+                            target: self, action: #selector(showOptions(_:)))
+        more.isBordered = false
+        more.imagePosition = .imageOnly
+        more.toolTip = "More options"
+        more.setAccessibilityLabel("More options")
+        more.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        more.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        let headerSpacer = NSView()
+        headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let header = NSStackView(views: [heading, headerSpacer, warmthToggle, more])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 10
+
         warmthSlider.target = self
         warmthSlider.action = #selector(changeWarmth)
         warmthSlider.numberOfTickMarks = 10
         warmthSlider.allowsTickMarkValuesOnly = true
-        // Commit once on release, not on every pixel while dragging.
+        // Commit once on release using the native slider's selectable positions.
         warmthSlider.isContinuous = false
         warmthSlider.setAccessibilityLabel("Display warmth")
-        stack.addArrangedSubview(warmthSlider)
-        stack.addArrangedSubview(row("Cooler → Warmer", control: warmthValue))
-        warmthNote.font = .systemFont(ofSize: 11)
-        warmthNote.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(warmthNote)
-        errorLabel.font = .systemFont(ofSize: 11)
-        errorLabel.textColor = .systemRed
-        errorLabel.isHidden = true
-        stack.addArrangedSubview(errorLabel)
-        stack.addArrangedSubview(separator())
+        warmthSlider.toolTip = "Adjust display warmth. The macOS Night Shift schedule is preserved."
 
-        let quit = NSButton(title: "Quit", target: NSApp, action: #selector(NSApplication.terminate(_:)))
-        quit.bezelStyle = .rounded
-        stack.addArrangedSubview(row("Prototype \(AppIdentity.version)", control: quit))
+        let cooler = NSTextField(labelWithString: "Cooler")
+        let warmer = NSTextField(labelWithString: "Warmer")
+        for label in [cooler, warmer] {
+            label.font = .systemFont(ofSize: 11)
+            label.textColor = .secondaryLabelColor
+        }
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let endpoints = NSStackView(views: [cooler, spacer, warmer])
+        endpoints.orientation = .horizontal
+
+        let stack = NSStackView(views: [header, warmthSlider, endpoints])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16)
+        ])
         for item in stack.arrangedSubviews {
             item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
-        boost.onChange = { [weak self] in self?.refreshBoost() }
         refresh()
     }
 
     override func viewWillAppear() {
         super.viewWillAppear()
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        // Only poll while visible. User actions and reopening refresh immediately.
+        timer?.invalidate()
+        let poll = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            // Installed on the main run loop; no additional task needs scheduling.
+            MainActor.assumeIsolated {
+                guard let self, self.timer != nil else { return }
+                self.refresh()
+            }
         }
+        poll.tolerance = 1
+        timer = poll
     }
 
     override func viewDidDisappear() {
@@ -122,60 +124,70 @@ final class PanelController: NSViewController {
     }
 
     func refresh() {
-        let screen = displaySnapshot().first { ($0["builtIn"] as? Bool) == true }
-        screenLabel.stringValue = screen?["name"] as? String ?? "Built-in display not found"
-        refreshBoost()
-
         let state = warmth.readState()
         let available = state?["available"]?.boolValue == true
+        let enabled = state?["enabled"]?.boolValue == true
+        let strength = state?["strength"]?.doubleValue
+        let current = PanelState(available: available, enabled: enabled, strength: strength,
+                                 diagnostic: warmth.diagnostic, error: settingError)
+        guard current != lastState else { return }
+        lastState = current
         warmthToggle.isEnabled = available
-        warmthToggle.state = state?["enabled"]?.boolValue == true ? .on : .off
-        warmthSlider.isEnabled = available && warmthToggle.state == .on
-        if let value = state?["strength"]?.doubleValue {
-            warmthSlider.doubleValue = warmthSlider.closestTickMarkValue(toValue: value)
-            warmthValue.stringValue = "\(Int((value * 100).rounded()))%"
-        } else {
-            warmthValue.stringValue = "—"
+        warmthToggle.state = enabled ? .on : .off
+        warmthSlider.isEnabled = available && enabled
+        if let strength {
+            // Reading system state must never round or commit a setting.
+            warmthSlider.doubleValue = strength
         }
-        warmthNote.stringValue = available
-            ? "Uses system Night Shift. The macOS schedule is preserved."
-            : "Night Shift is unavailable. \(warmth.diagnostic)."
-    }
-
-    private func refreshBoost() {
-        let running = boost.running
-        let available = boost.unavailableReason
-        boostSwitch.state = running && boost.report.phase != "off" ? .on : .off
-        boostSwitch.isEnabled = running || available == nil
-        boostSlider.isEnabled = running || available == nil
-        if boost.report.phase == "active" {
-            boostValue.stringValue = String(format: "×%.2f", boost.report.factor)
-            boostNote.stringValue = "Boost is on. It turns off automatically during sleep or thermal pressure."
-        } else if boost.report.phase == "preparing" && running {
-            boostValue.stringValue = "Preparing…"
-            boostNote.stringValue = "Waiting for stable HDR brightness. Use the switch to stop Boost."
+        statusLabel.textColor = settingError == nil ? .secondaryLabelColor : .systemRed
+        if let settingError {
+            statusLabel.stringValue = settingError
+        } else if !available {
+            statusLabel.stringValue = "Unavailable"
+        } else if enabled, let strength {
+            statusLabel.stringValue = "On · \(Int((strength * 100).rounded()))%"
         } else {
-            boostValue.stringValue = String(format: "×%.2f", boost.factor)
-            boostNote.stringValue = available ?? (boost.report.reason == nil || boost.report.reason == "manual"
-                ? "Runs until manually turned off, sleep, or a safety stop."
-                : BoostPlatform.reason(boost.report.reason))
+            statusLabel.stringValue = "Off"
         }
+        statusLabel.toolTip = settingError ?? (available
+            ? "The macOS Night Shift schedule is preserved."
+            : warmth.diagnostic)
     }
 
-    @objc private func toggleBoost() {
-        if boostSwitch.state == .on { boost.start(); boostSlider.doubleValue = boost.factor }
-        else { boost.stop() }
-        refreshBoost()
+    @objc private func showOptions(_ sender: NSButton) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        check.target = self
+        check.isEnabled = updates.canCheck
+        let automaticChecks = menu.addItem(withTitle: "Check for Updates Automatically", action: #selector(changeAutomaticChecks(_:)), keyEquivalent: "")
+        automaticChecks.target = self
+        automaticChecks.isEnabled = updates.isConfigured
+        automaticChecks.state = updates.automaticallyChecks ? .on : .off
+        let automaticInstallation = menu.addItem(withTitle: "Install Updates Automatically", action: #selector(changeAutomaticInstallation(_:)), keyEquivalent: "")
+        automaticInstallation.target = self
+        automaticInstallation.isEnabled = updates.isConfigured && updates.automaticallyChecks
+        automaticInstallation.state = updates.automaticallyInstalls ? .on : .off
+        menu.addItem(.separator())
+        let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.target = NSApp
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY - 4), in: sender)
     }
 
-    @objc private func changeBoost() {
-        boost.changeFactor(boostSlider.closestTickMarkValue(toValue: boostSlider.doubleValue))
-        refreshBoost()
+    @objc private func checkForUpdates(_ sender: Any?) {
+        updates.check(sender)
+    }
+
+    @objc private func changeAutomaticChecks(_ sender: NSMenuItem) {
+        updates.setAutomaticChecks(sender.state != .on)
+    }
+
+    @objc private func changeAutomaticInstallation(_ sender: NSMenuItem) {
+        updates.setAutomaticInstallation(sender.state != .on)
     }
 
     @objc private func toggleWarmth() {
-        let ok = warmth.changeEnabled(warmthToggle.state == .on)
-        report(ok)
+        report(warmth.changeEnabled(warmthToggle.state == .on))
     }
 
     @objc private func changeWarmth() {
@@ -184,26 +196,10 @@ final class PanelController: NSViewController {
     }
 
     private func report(_ success: Bool) {
-        errorLabel.stringValue = success ? "" : "macOS could not apply the setting. Please try again."
-        errorLabel.isHidden = success
+        settingError = success ? nil : "Could not apply setting. Try again."
+        // Restore controls from macOS even if a repeated write failed identically.
+        lastState = nil
         refresh()
-    }
-
-    private func row(_ text: String, control: NSView) -> NSStackView {
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 12, weight: .medium)
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let row = NSStackView(views: [label, spacer, control])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        return row
-    }
-
-    private func separator() -> NSBox {
-        let box = NSBox()
-        box.boxType = .separator
-        return box
     }
 }
 
@@ -211,18 +207,17 @@ final class PanelController: NSViewController {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var status: NSStatusItem!
     private let popover = NSPopover()
-    private var panel: PanelController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         let controller = PanelController()
-        panel = controller
         popover.contentViewController = controller
-        popover.contentSize = NSSize(width: 340, height: 500)
+        popover.contentSize = PanelController.size
         popover.behavior = .transient
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = status.button {
-            button.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: AppIdentity.name)
+            button.image = NSImage(systemSymbolName: "sun.max", accessibilityDescription: "Display warmth")
+            button.image?.isTemplate = true
             button.toolTip = AppIdentity.name
             button.target = self
             button.action = #selector(togglePanel)
@@ -246,12 +241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print("Display Dials: UI initialized; no display settings changed.")
             NSApp.terminate(nil)
         } else {
+            controller.updates.start()
             togglePanel()
         }
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        panel?.boost.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -270,47 +262,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
-if CommandLine.arguments.contains("--boost-worker") {
-    let worker = BoostWorker()
-    worker.run()
-    withExtendedLifetime(worker) { app.run() }
-} else if CommandLine.arguments.contains("--renderer-check") {
-    let data = try JSONSerialization.data(withJSONObject: HDRRenderer.offscreenCheck(), options: [.prettyPrinted, .sortedKeys])
-    print(String(decoding: data, as: UTF8.self))
-} else if CommandLine.arguments.contains("--sleep-check") {
-    let check = SleepCheck()
-    check.run()
-    withExtendedLifetime(check) { app.run() }
-} else if CommandLine.arguments.contains("--controller-check") {
-    // Integration check of the UI controller/IPC path with only a tiny HDR marker.
-    app.setActivationPolicy(.prohibited)
-    let controller = BoostController(triggerOnly: true)
-    var observedActive = false
-    controller.onChange = {
-        if controller.report.phase == "active" { observedActive = true }
-        if !controller.running {
-            let passed = observedActive && controller.report.phase == "off" && controller.report.reason == "manual"
-            print("Controller start/stop: \(passed ? "PASS" : "FAIL")")
-            exit(passed ? 0 : 1)
-        }
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { controller.stop() }
-    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 8) { _exit(74) }
-    controller.start()
-    withExtendedLifetime(controller) { app.run() }
-} else if CommandLine.arguments.contains("--diagnostics") {
+if CommandLine.arguments.contains("--diagnostics") {
     let warmth = DDWarmthClient()
     let result: [String: Any] = [
         "app": AppIdentity.name,
         "version": AppIdentity.version,
-        "boostRenderer": "experimental Metal overlay; continuous with liveness watchdog",
-        "conflictingApps": BoostPlatform.conflictingApps,
-        "sessionActive": BoostPlatform.sessionActive,
-        "screens": displaySnapshot(),
         "nightShiftSupported": warmth.supported,
         "nightShiftDiagnostic": warmth.diagnostic,
-        "nightShiftState": warmth.readState() ?? [:],
-        "thermalState": ProcessInfo.processInfo.thermalState.rawValue
+        "nightShiftState": warmth.readState() ?? [:]
     ]
     let data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
     print(String(decoding: data, as: UTF8.self))

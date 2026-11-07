@@ -5,11 +5,14 @@ let package = Package(
     name: "DisplayDials",
     platforms: [.macOS(.v13)],
     products: [.executable(name: "DisplayDials", targets: ["DisplayDials"])],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
+    ],
     targets: [
-        .target(name: "DisplayCore"),
         .target(name: "NightShiftBridge", publicHeadersPath: "include",
                 cSettings: [.unsafeFlags(["-fobjc-arc"])]),
-        .executableTarget(name: "DisplayDials", dependencies: ["DisplayCore", "NightShiftBridge"]),
-        .testTarget(name: "DisplayCoreTests", dependencies: ["DisplayCore"])
+        .executableTarget(name: "DisplayDials", dependencies: [
+            "NightShiftBridge", .product(name: "Sparkle", package: "Sparkle")
+        ], linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])])
     ]
 )

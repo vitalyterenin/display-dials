@@ -1,74 +1,55 @@
 # Display Dials
 
-A compact macOS menu bar app for display warmth and experimental brightness boost.
+A compact macOS menu bar app for display warmth through Night Shift.
 
-## Prototype status: 0.3.2
+## Prototype status: 0.5.0
 
-- An English-language native menu bar panel with no Dock window.
-- Night Shift status, an on/off switch, and a warmth slider.
-- Each slider has exactly 10 selectable positions, including both endpoints.
-  An existing Night Shift strength between positions remains unchanged until adjusted.
-- The macOS Night Shift schedule is preserved. Changes apply globally through macOS,
-  rather than per monitor, and persist after the app quits.
-- Read-only queries for built-in display capabilities and current EDR headroom.
-- **Brightness boost is experimental and runs continuously**, started manually.
-  A Metal overlay runs in a separate process. The multiplier ranges from 1.00 to 1.25
-  and defaults to approximately 1.11. Selecting 1.00 stops the boost.
-- The multiplier is capped by current EDR headroom. If available headroom decreases,
-  the app does not automatically raise the multiplier when headroom recovers.
-- The trial stops when thermal state rises above nominal, the display sleeps, the
-  session locks, display configuration changes, the GPU fails, or communication with
-  the panel is lost. It does not resume automatically.
-- BetterDisplay, BrightIntosh, and Vivid must be closed before a trial. This checks
-  for conflicting utilities; it does not implement application exclusions.
-- System brightness, gamma tables, and display presets are not overwritten.
+- A compact native AppKit panel with a system sun symbol in the menu bar.
+- Night Shift status and controls stay in the panel; updates and Quit are in the
+  standard More options menu. Layout, controls, and symbols use macOS components.
+- A Night Shift on/off switch and a warmth slider with exactly 10 selectable
+  positions, including both endpoints. An existing strength between positions
+  remains unchanged until adjusted.
+- The macOS Night Shift schedule is preserved. Changes apply globally through macOS
+  and persist after the app quits.
+- At launch, the app only reads settings. Changes require user action.
+- One stable update feed hosted at `https://teren.in/updates/display-dials/appcast.xml`.
+- Automatic update checks and installation can be changed in More options.
+- There is no analytics or system profiling. Update requests contact the update host.
 
-The user reported no flicker in the 0.2.1 retest. Version 0.3.0 removes the fixed
-session deadline while preserving the multiplier ceiling, thermal checks, and
-heartbeat protection. A renewable watchdog terminates a stuck worker independently
-of its main run loop. A 90-second desktop test held gain at 1.10 after startup.
-Absolute luminance gain and long-term panel lifespan have not been measured.
+## Build and validate
 
-At launch, the app only reads settings. Night Shift changes require user action.
-Brightness boost always starts disabled. There are no servers or analytics.
-
-## Build
-
-Requires macOS 13+ and Swift 6+ through Xcode or Command Line Tools. There are no
-third-party dependencies.
+Requires an Apple Silicon Mac, macOS 13+, and Swift 6+ through Xcode or Command Line
+Tools. Intel Macs are not supported. Sparkle 2.10.1 is pinned through Swift Package
+Manager; the first build needs network access to download it.
 
 ```sh
+# Build and run read-only diagnostics and a UI smoke check.
 bash scripts/test.sh
+# Build and sign the local app bundle.
 bash scripts/build-app.sh
-# IPC checks without windows or display changes:
-python3 scripts/check-worker.py
 ```
 
 The local app bundle is built at `~/Library/Developer/DisplayDials/Display Dials.app`.
 It is built outside Documents because that directory's file provider adds metadata
 that invalidates the app signature. Override the destination with
-`DISPLAY_DIALS_OUTPUT_DIR`. The bundle is ad hoc signed for local use, without
-notarization or automatic updates. The test script works around Swift Testing macro
-plugin discovery in Command Line Tools 27.2.
+`DISPLAY_DIALS_OUTPUT_DIR`. Build scripts keep their cache at
+`~/Library/Developer/DisplayDials/Build` to avoid the same file-provider delays;
+override it with `DISPLAY_DIALS_BUILD_DIR`. The bundle includes Sparkle and uses a
+free ad hoc code signature, without Apple notarization. The first downloaded
+installation may require **System Settings > Privacy & Security > Open Anyway**.
+Automatic updates are authenticated with the app's Ed25519 key.
 
 ```sh
-# Read-only diagnostics; no display changes.
+# Read-only Night Shift diagnostics; no display changes.
 swift run DisplayDials --diagnostics
-# Initialize the UI and exit immediately without writing display settings.
+# Initialize the UI and exit without writing display settings.
 swift run DisplayDials --smoke-test
-# Check floating-point GPU rendering without displaying the result.
-swift run DisplayDials --renderer-check
+# Optionally save a PNG of the panel during the smoke check.
+swift run DisplayDials --smoke-test --snapshot /tmp/display-dials-panel.png
 # Open the panel from the built app.
-"$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials"
+open "$HOME/Library/Developer/DisplayDials/Display Dials.app"
 ```
-
-## Trial diagnostics
-
-The latest trial is recorded locally at
-`~/Library/Logs/DisplayDials/latest-boost.jsonl`. It contains status, headroom,
-frame counts, brightness readbacks, and the stop reason/exit status. It records no
-screen content and is not uploaded. Each session replaces the previous trace. During long sessions the file wraps at
-approximately 1 MB, preserving a recent segment; it is readable only by the current user.
 
 ## Limitations
 
@@ -78,10 +59,5 @@ when incompatible. This is a prototype for direct distribution, not a ready-to-s
 Mac App Store app. Changing settings simultaneously in Shifty or other utilities
 can cause competing updates; Display Dials rereads the system state.
 
-EDR headroom is relative HDR rendering capacity, **not a measurement in nits or a
-guarantee of panel safety**. Increased brightness may affect heat and display aging.
-The 1.25 multiplier is an experimental ceiling, not a certified safe operating
-value. Continuous operation stops on sleep, thermal pressure, or other safety events.
-
-See [docs/implementation.md](docs/implementation.md) for implementation details,
-validation results, sources, and the remaining brightness-boost checks.
+See [docs/implementation.md](docs/implementation.md) for implementation details.
+See [docs/releases.md](docs/releases.md) for publishing and signing-key setup.

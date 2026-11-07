@@ -1,11 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-developer_dir="$(xcode-select -p)"
-testing_plugin="$developer_dir/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib"
-if [[ "$developer_dir" == */CommandLineTools && -f "$testing_plugin" ]]; then
-    # CLT 27.2's swiftbuild discovers Testing.framework but misses its macro plugin.
-    swift test -Xswiftc -load-plugin-library -Xswiftc "$testing_plugin"
-else
-    swift test
-fi
+# Keep build caches outside the Documents file provider.
+build_dir="${DISPLAY_DIALS_BUILD_DIR:-$HOME/Library/Developer/DisplayDials/Build}"
+swift build --scratch-path "$build_dir" --arch arm64
+binary_dir="$(swift build --scratch-path "$build_dir" --arch arm64 --show-bin-path)"
+"$binary_dir/DisplayDials" --diagnostics
+"$binary_dir/DisplayDials" --smoke-test
