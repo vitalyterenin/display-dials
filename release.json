@@ -1,6 +1,7 @@
 {
-  "version": "0.5.1",
-  "build": "9",
+  "version": "0.6.0",
+  "build": "10",
+  "telemetryDeckAppID": "8DAED507-C688-4AAA-BBB6-1021563985A3",
   "feedURL": "https://teren.in/updates/display-dials/appcast.xml",
   "downloadURLPrefix": "https://teren.in/updates/display-dials/",
   "publicEDKey": "vR8oWg0SSkNnKLEfRrI3Pwdo1JkbyvU1kkwYWEN29IQ="

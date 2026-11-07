@@ -35,6 +35,8 @@ for executable in "$sparkle/Versions/B/Sparkle" "$sparkle/Versions/B/Autoupdate"
     fi
 done
 python3 scripts/release.py plist "$app_dir/Contents/Info.plist"
+mkdir -p "$app_dir/Contents/Resources"
+cp Resources/PrivacyInfo.xcprivacy "$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
 # Finder / file providers may add this attribute to an existing generated bundle.
 # Remove only Finder metadata; do not remove quarantine or other security metadata.
 xattr -dr com.apple.FinderInfo "$app_dir" 2>/dev/null || true

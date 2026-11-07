@@ -1,5 +1,6 @@
 import AppKit
 import NightShiftBridge
+import UsageTelemetry
 
 enum AppIdentity {
     static let name = "Display Dials"
@@ -13,6 +14,15 @@ final class PanelController: NSViewController, NSMenuDelegate {
     static let size = NSSize(width: 288, height: 116)
     let warmth = DDWarmthClient()
     let updates = UpdateController()
+    let telemetry = UsageTelemetry(
+        appID: Bundle.main.object(forInfoDictionaryKey: "TelemetryDeckAppID") as? String,
+        version: AppIdentity.version,
+        build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Development",
+        runtimeAllowed: Bundle.main.bundleURL.pathExtension == "app"
+            && !CommandLine.arguments.contains("--smoke-test")
+            && !CommandLine.arguments.contains("--diagnostics")
+    )
+    private var statisticsPreferences: StatisticsPreferences?
     private let warmthToggle = NSSwitch()
     private let warmthSlider = NSSlider(value: 0.5, minValue: 0, maxValue: 1, target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: "")
@@ -173,6 +183,9 @@ final class PanelController: NSViewController, NSMenuDelegate {
         automaticInstallation.isEnabled = updates.isConfigured && updates.automaticallyChecks
         automaticInstallation.state = updates.automaticallyInstalls ? .on : .off
         menu.addItem(.separator())
+        let statistics = menu.addItem(withTitle: "Usage Statistics…", action: #selector(showStatistics), keyEquivalent: "")
+        statistics.target = self
+        menu.addItem(.separator())
         let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY - 4), in: sender)
@@ -184,24 +197,42 @@ final class PanelController: NSViewController, NSMenuDelegate {
     }
 
     @objc private func checkForUpdates(_ sender: Any?) {
+        if updates.canCheck { telemetry.record(.manualUpdateCheck) }
         updates.check(sender)
     }
 
     @objc private func changeAutomaticChecks(_ sender: NSMenuItem) {
         updates.setAutomaticChecks(sender.state != .on)
+        recordUpdatePreferences()
     }
 
     @objc private func changeAutomaticInstallation(_ sender: NSMenuItem) {
         updates.setAutomaticInstallation(sender.state != .on)
+        recordUpdatePreferences()
+    }
+
+    func recordUpdatePreferences() {
+        telemetry.record(.updatePreferences(checks: updates.automaticallyChecks, installation: updates.automaticallyInstalls))
+    }
+
+    @objc func showStatistics() {
+        if let existing = statisticsPreferences, existing.window?.isVisible == true { existing.present(); return }
+        statisticsPreferences = StatisticsPreferences(telemetry: telemetry) { [weak self] in self?.recordUpdatePreferences() }
+        statisticsPreferences?.present()
     }
 
     @objc private func toggleWarmth() {
-        report(warmth.changeEnabled(warmthToggle.state == .on))
+        let enabled = warmthToggle.state == .on
+        let success = warmth.changeEnabled(enabled)
+        telemetry.record(.nightShiftChanged(enabled: enabled, succeeded: success))
+        report(success)
     }
 
     @objc private func changeWarmth() {
         let strength = Float(warmthSlider.closestTickMarkValue(toValue: warmthSlider.doubleValue))
-        report(warmth.changeStrength(strength))
+        let success = warmth.changeStrength(strength)
+        telemetry.record(.warmthChanged(position: Int((strength * 9).rounded()) + 1, succeeded: success))
+        report(success)
     }
 
     private func report(_ success: Bool) {
@@ -251,22 +282,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
         } else {
             controller.updates.start()
-            togglePanel()
+            controller.telemetry.start()
+            controller.recordUpdatePreferences()
+            showPanel(source: .launch)
+            if controller.telemetry.isConfigured && !controller.telemetry.hasChosen {
+                popover.performClose(nil)
+                controller.showStatistics()
+            }
         }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !popover.isShown { togglePanel() }
+        if !popover.isShown { showPanel(source: .reopen) }
         return false
     }
 
     @objc private func togglePanel() {
-        guard let button = status.button else { return }
         if popover.isShown { popover.performClose(nil) }
-        else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
-        }
+        else { showPanel(source: .menuBar) }
+    }
+
+    private func showPanel(source: UsageEvent.PanelSource) {
+        guard let button = status.button else { return }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        (popover.contentViewController as? PanelController)?.telemetry.record(.panelOpened(source))
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
