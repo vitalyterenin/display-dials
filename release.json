@@ -1,6 +1,6 @@
 {
-  "version": "0.6.1",
-  "build": "11",
+  "version": "0.6.2",
+  "build": "12",
   "id": "display-dials",
   "telemetryDeckAppID": "8DAED507-C688-4AAA-BBB6-1021563985A3",
   "feedURL": "https://teren.in/apps/feeds/display-dials.xml",

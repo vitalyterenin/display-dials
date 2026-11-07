@@ -10,7 +10,7 @@ enum AppIdentity {
 }
 
 @MainActor
-final class PanelController: NSViewController, NSMenuDelegate {
+final class PanelController: NSViewController {
     static let size = NSSize(width: 288, height: 116)
     let warmth = DDWarmthClient()
     let updates = UpdateController()
@@ -168,7 +168,6 @@ final class PanelController: NSViewController, NSMenuDelegate {
 
     @objc private func showOptions(_ sender: NSButton) {
         let menu = NSMenu()
-        menu.delegate = self
         menu.autoenablesItems = false
         let version = menu.addItem(withTitle: "\(AppIdentity.name) · Version \(AppIdentity.version)", action: nil, keyEquivalent: "")
         version.isEnabled = false
@@ -204,12 +203,7 @@ final class PanelController: NSViewController, NSMenuDelegate {
         menu.addItem(.separator())
         let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY - 4), in: sender)
-    }
-
-    func confinementRect(for menu: NSMenu, on screen: NSScreen?) -> NSRect {
-        // A menu opened from a popover must be allowed to use the full screen.
-        screen?.visibleFrame ?? .zero
+        OptionsMenuPresentation.popUp(menu, from: sender)
     }
 
     @objc private func changeLaunchAtLogin(_ sender: NSMenuItem) {
