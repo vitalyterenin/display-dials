@@ -18,17 +18,21 @@ check the workflow result and published appcast for that.
 | --- | --- |
 | `version` | Three-part user-facing version, copied to `CFBundleShortVersionString` |
 | `build` | Positive, increasing integer string, copied to `CFBundleVersion` |
-| `feedURL` | Stable appcast URL |
-| `downloadURLPrefix` | HTTPS prefix for the permanent download; `feedURL` must equal this plus `appcast.xml` |
+| `id` | Permanent application slug (`display-dials`) |
+| `feedURL` | Signed feed at `/apps/feeds/<id>.xml` |
+| `downloadURL` | Permanent app-named DMG directly under `/apps/` |
+| `legacyFeedURLs` | Former feed addresses used only to bootstrap a migration |
 | `publicEDKey` | Base64-encoded 32-byte public Sparkle Ed25519 key |
 | `telemetryDeckAppID` | Public UUID for Display Dials in TelemetryDeck; not an account credential |
 
-The feed is `https://teren.in/updates/display-dials/appcast.xml`. Files are hosted
+The feed is `https://teren.in/apps/feeds/display-dials.xml`. Files are hosted
 in the existing `teren.in` Yandex Object Storage bucket behind Cloudflare. The previous
 feed is read directly from the Object Storage origin to avoid CDN staleness.
-The repository can remain private. The public directory contains only
-`DisplayDials.dmg` and `appcast.xml`; releases replace these two objects.
-The permanent download URL is `https://teren.in/updates/display-dials/DisplayDials.dmg`.
+The repository can remain private. The application owns only two objects: `apps/DisplayDials.dmg` and
+`apps/feeds/display-dials.xml`. Releases replace these two objects. The `/apps/`
+catalog belongs to the separate `teren-in` website repository. This release
+repository must not publish site pages or list other private repositories.
+The permanent download URL is `https://teren.in/apps/DisplayDials.dmg`.
 The version/build inside the app and feed still increase so Sparkle can detect updates.
 
 GitHub Actions needs these encrypted repository secrets:
@@ -36,7 +40,7 @@ GitHub Actions needs these encrypted repository secrets:
 - `SPARKLE_PRIVATE_KEY`: the exported private Sparkle signing key for the
   `com.vitalyterenin.displaydials` Keychain account.
 - `YC_ACCESS_KEY_ID` and `YC_SECRET_ACCESS_KEY`: the dedicated publisher's static
-  S3 credentials, restricted to `updates/display-dials/` in `teren.in`.
+  S3 credentials, restricted to the two exact release object keys in `teren.in`.
 
 The public key belongs in `release.json`; private keys and cloud credentials do
 not belong in source, logs, artifacts, or the website. Keep a protected backup of
@@ -62,7 +66,7 @@ CI passes that secret to Sparkle tools through stdin.
 
 [deployment/teren-in-policy.json](../deployment/teren-in-policy.json) records the
 bucket policy for preserving public reads and existing access while limiting the
-dedicated publisher to GetObject/PutObject on the application prefix. Committing
+dedicated publisher to GetObject/PutObject on its two exact release keys. Committing
 that file does not apply cloud permissions. The publisher's uploader role must be
 assigned on this bucket, rather than granting access across the cloud folder.
 
@@ -127,7 +131,7 @@ and checks the bundled executable. Packaging then:
 
 The Linux publisher uses the pinned `boto3` version from the workflow. It verifies
 artifact hashes and checks that its credential is denied access outside the app's
-prefix using a non-mutating conditional request. Before replacing the download, it verifies that the feed still matches the
+objects using non-mutating conditional requests against site pages and other apps. Before replacing the download, it verifies that the feed still matches the
 expected ETag and rejects downgrades or reuse of a build for different bytes.
 It conditionally replaces the archive first, reads it back to verify the bytes,
 then conditionally replaces the appcast using the previous ETag. First publication
@@ -137,7 +141,14 @@ Both the DMG and feed use `Cache-Control: no-store, max-age=0`; the permanent
 download must not be served from an immutable cache. A concurrent feed change
 aborts publication unless the existing feed already matches this artifact. The
 publisher writes only these two objects and does not modify other website files.
-Historical version-named downloads from before this policy require one-time cleanup.
+Former download and feed paths under `/updates/display-dials/` redirect permanently
+to the new locations through Cloudflare. Remove the corresponding old storage
+objects only after both redirects are active. Keep the old feed redirect because
+installed 0.6.0 apps still contain that address; future rebuilt releases get the
+new feed URL from configuration. Redirects retain compatibility without duplicated
+DMG/feed objects. The first publication can read the signed legacy feed at the
+Object Storage origin when the new feed is absent; its ETag is not used as a
+condition for creating the new feed key.
 
 Two separate storage objects cannot be replaced atomically. A client that retained
 the preceding feed can race a publication and receive a different signed archive.

@@ -5,10 +5,13 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 import xml.etree.ElementTree as ET
 
 from botocore.exceptions import ClientError
+
+sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
 
 spec = importlib.util.spec_from_file_location('publish', Path(__file__).parents[1] / 'scripts/publish.py')
 publication = importlib.util.module_from_spec(spec)
@@ -16,9 +19,10 @@ spec.loader.exec_module(publication)
 
 
 def feed(build, signature='signed', name='DisplayDials.dmg'):
+    download = publication.DOWNLOAD_URL.rsplit('/', 1)[0] + '/' + name
     return f'''<rss xmlns:sparkle="{publication.NS['sparkle']}"><channel><item>
     <sparkle:version>{build}</sparkle:version><sparkle:shortVersionString>0.6.{build}</sparkle:shortVersionString>
-    <enclosure url="https://teren.in/{publication.PREFIX}{name}" length="3" sparkle:edSignature="{signature}"/>
+    <enclosure url="{download}" length="3" sparkle:edSignature="{signature}"/>
     </item></channel></rss>'''.encode()
 
 
@@ -39,7 +43,7 @@ class Storage:
 
     def put_object(self, **arguments):
         key = arguments['Key']
-        if not key.startswith(publication.PREFIX):
+        if key not in publication.ALLOWED_KEYS:
             raise ClientError({'ResponseMetadata': {'HTTPStatusCode': 403}}, 'PutObject')
         previous = self.objects.get(key)
         if (arguments.get('IfNoneMatch') == '*' and previous is not None
@@ -65,39 +69,58 @@ class PublicationTests(unittest.TestCase):
     def test_first_publication_has_only_two_permanent_objects(self):
         storage = Storage()
         publication.publish(self.artifact(feed(1)), storage)
-        self.assertEqual(set(storage.objects), {publication.PREFIX + name for name in ['DisplayDials.dmg', 'appcast.xml']})
-        self.assertEqual([x['Key'] for x in storage.puts], [publication.PREFIX + 'DisplayDials.dmg', publication.PREFIX + 'appcast.xml'])
+        self.assertEqual(set(storage.objects), publication.ALLOWED_KEYS)
+        self.assertEqual([x['Key'] for x in storage.puts], [publication.DOWNLOAD_KEY, publication.FEED_KEY])
         self.assertTrue(all('no-store' in x['CacheControl'] for x in storage.puts))
 
     def test_next_release_replaces_the_same_object(self):
         current = feed(1, 'old')
-        storage = Storage({publication.PREFIX + 'DisplayDials.dmg': b'old', publication.PREFIX + 'appcast.xml': current})
+        storage = Storage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: current})
         publication.publish(self.artifact(feed(2), Storage.etag(current)), storage)
         self.assertEqual(len(storage.objects), 2)
-        self.assertEqual(storage.objects[publication.PREFIX + 'DisplayDials.dmg'], b'new')
+        self.assertEqual(storage.objects[publication.DOWNLOAD_KEY], b'new')
+
+    def test_releases_do_not_modify_the_catalog_or_another_app(self):
+        unrelated = {'apps/index.html': b'catalog', 'apps/OtherApp.dmg': b'other-app', 'index.html': b'personal-site'}
+        storage = Storage(unrelated)
+        publication.publish(self.artifact(feed(1)), storage)
+        for key, content in unrelated.items():
+            self.assertEqual(storage.objects[key], content)
+        self.assertEqual({item['Key'] for item in storage.puts}, publication.ALLOWED_KEYS)
+
+    def test_overbroad_credentials_abort_before_publication(self):
+        class OverbroadStorage(Storage):
+            def put_object(self, **arguments):
+                if arguments['Key'] not in publication.ALLOWED_KEYS:
+                    raise ClientError({'ResponseMetadata': {'HTTPStatusCode': 412}}, 'PutObject')
+                return super().put_object(**arguments)
+        storage = OverbroadStorage()
+        with self.assertRaisesRegex(ValueError, 'outside its two release objects'):
+            publication.publish(self.artifact(feed(1)), storage)
+        self.assertEqual(storage.objects, {})
 
     def test_stale_feed_aborts_before_replacing_download(self):
-        storage = Storage({publication.PREFIX + 'DisplayDials.dmg': b'old', publication.PREFIX + 'appcast.xml': feed(5)})
+        storage = Storage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: feed(5)})
         with self.assertRaisesRegex(ValueError, 'changed before publication'):
             publication.publish(self.artifact(feed(2), '"stale"'), storage)
         self.assertEqual(storage.puts, [])
 
     def test_cannot_reuse_build_number_with_a_new_signature(self):
         current = feed(1, 'old')
-        storage = Storage({publication.PREFIX + 'DisplayDials.dmg': b'old', publication.PREFIX + 'appcast.xml': current})
+        storage = Storage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: current})
         with self.assertRaisesRegex(ValueError, 'cannot be reused'):
             publication.publish(self.artifact(feed(1, 'different'), Storage.etag(current)), storage)
         self.assertEqual(storage.puts, [])
 
     def test_migration_reuses_current_signed_archive(self):
         current = feed(1, name='DisplayDials-0.6.1.dmg')
-        storage = Storage({publication.PREFIX + 'appcast.xml': current})
+        storage = Storage({publication.FEED_KEY: current})
         publication.publish(self.artifact(feed(1), Storage.etag(current)), storage)
-        self.assertEqual(storage.objects[publication.PREFIX + 'DisplayDials.dmg'], b'new')
+        self.assertEqual(storage.objects[publication.DOWNLOAD_KEY], b'new')
 
     def test_retry_after_publication_is_idempotent(self):
         content = feed(1)
-        storage = Storage({publication.PREFIX + 'DisplayDials.dmg': b'new', publication.PREFIX + 'appcast.xml': content})
+        storage = Storage({publication.DOWNLOAD_KEY: b'new', publication.FEED_KEY: content})
         publication.publish(self.artifact(content, '"earlier-etag"'), storage)
         self.assertEqual(len(storage.objects), 2)
 
@@ -111,14 +134,14 @@ class PublicationTests(unittest.TestCase):
     def test_archive_race_does_not_publish_feed(self):
         class RacingStorage(Storage):
             def put_object(self, **arguments):
-                if arguments['Key'] == publication.PREFIX + 'DisplayDials.dmg':
+                if arguments['Key'] == publication.DOWNLOAD_KEY:
                     self.objects[arguments['Key']] = b'concurrent-release'
                 return super().put_object(**arguments)
         current = feed(1, 'old')
-        storage = RacingStorage({publication.PREFIX + 'DisplayDials.dmg': b'old', publication.PREFIX + 'appcast.xml': current})
+        storage = RacingStorage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: current})
         with self.assertRaises(ClientError):
             publication.publish(self.artifact(feed(2), Storage.etag(current)), storage)
-        self.assertEqual(storage.objects[publication.PREFIX + 'appcast.xml'], current)
+        self.assertEqual(storage.objects[publication.FEED_KEY], current)
 
     def test_changed_artifact_is_never_uploaded(self):
         path = self.artifact(feed(1))

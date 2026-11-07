@@ -16,11 +16,14 @@
       "Resource": ["arn:aws:s3:::teren.in", "arn:aws:s3:::teren.in/*"]
     },
     {
-      "Sid": "DisplayDialsReleaseFilesOnly",
+      "Sid": "DisplayDialsTwoReleaseObjectsOnly",
       "Effect": "Allow",
       "Principal": {"CanonicalUser": "ajeu7547nhflc1cc4qfo"},
       "Action": ["s3:GetObject", "s3:PutObject"],
-      "Resource": "arn:aws:s3:::teren.in/updates/display-dials/*"
+      "Resource": [
+        "arn:aws:s3:::teren.in/apps/DisplayDials.dmg",
+        "arn:aws:s3:::teren.in/apps/feeds/display-dials.xml"
+      ]
     }
   ]
 }

@@ -1,8 +1,10 @@
 {
   "version": "0.6.0",
   "build": "10",
+  "id": "display-dials",
   "telemetryDeckAppID": "8DAED507-C688-4AAA-BBB6-1021563985A3",
-  "feedURL": "https://teren.in/updates/display-dials/appcast.xml",
-  "downloadURLPrefix": "https://teren.in/updates/display-dials/",
+  "feedURL": "https://teren.in/apps/feeds/display-dials.xml",
+  "downloadURL": "https://teren.in/apps/DisplayDials.dmg",
+  "legacyFeedURLs": ["https://teren.in/updates/display-dials/appcast.xml"],
   "publicEDKey": "vR8oWg0SSkNnKLEfRrI3Pwdo1JkbyvU1kkwYWEN29IQ="
 }

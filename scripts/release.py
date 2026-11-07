@@ -31,14 +31,29 @@ def config():
         raise ValueError('build must be a positive, increasing integer')
     if len(base64.b64decode(data['publicEDKey'], validate=True)) != 32:
         raise ValueError('publicEDKey must contain the Sparkle public key')
-    for key in ('feedURL', 'downloadURLPrefix'):
-        url = urllib.parse.urlparse(data[key])
-        if url.scheme != 'https' or not url.netloc or url.query or url.fragment:
-            raise ValueError(f'{key} must be an HTTPS URL without a query or fragment')
-    if data['feedURL'] != data['downloadURLPrefix'] + 'appcast.xml':
-        raise ValueError('feedURL must be downloadURLPrefix + appcast.xml')
+    if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', data['id']):
+        raise ValueError('id must be a stable lowercase application slug')
+    if object_key(data['downloadURL']) != 'apps/' + ARCHIVE_NAME:
+        raise ValueError('The download must be a single app-named DMG directly inside /apps/')
+    if object_key(data['feedURL']) != 'apps/feeds/' + data['id'] + '.xml':
+        raise ValueError('The feed must be /apps/feeds/<app-id>.xml')
+    for url in data.get('legacyFeedURLs', []):
+        object_key(url)
     uuid.UUID(data['telemetryDeckAppID'])
     return data
+
+
+def object_key(url):
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.scheme != 'https' or parsed.netloc != 'teren.in' or parsed.query or parsed.fragment
+            or not re.fullmatch(r'/[A-Za-z0-9._/-]+', parsed.path)
+            or any(part in ('', '.', '..') for part in parsed.path.split('/')[1:])):
+        raise ValueError('Expected a plain HTTPS file URL on teren.in')
+    return parsed.path.lstrip('/')
+
+
+def origin_url(url):
+    return 'https://storage.yandexcloud.net/teren.in/' + object_key(url)
 
 
 def write_plist(path):
@@ -128,9 +143,9 @@ def prepare_feed(output, tools, data, state):
     archive = output / ARCHIVE_NAME
     args, kwargs = signing_args()
     run(pathlib.Path(tools) / 'bin/generate_appcast', *args,
-        '--download-url-prefix', data['downloadURLPrefix'],
+        '--download-url-prefix', data['downloadURL'].removesuffix(ARCHIVE_NAME),
         '--maximum-deltas', '0', '--maximum-versions', '1',
-        '--link', 'https://teren.in/', output, **kwargs)
+        '--link', 'https://teren.in/apps/', '-o', output / 'appcast.xml', output, **kwargs)
     run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify',
         output / 'appcast.xml', **kwargs)
     root, _ = read_feed((output / 'appcast.xml').read_bytes())
@@ -141,7 +156,7 @@ def prepare_feed(output, tools, data, state):
     if item.findtext('sparkle:hardwareRequirements', namespaces=NS) != 'arm64':
         raise ValueError('Generated appcast must require Apple Silicon')
     enclosure = item.find('enclosure')
-    if enclosure.get('url') != data['downloadURLPrefix'] + archive.name:
+    if enclosure.get('url') != data['downloadURL']:
         raise ValueError('Unexpected archive URL')
     signature = enclosure.get('{' + NS['sparkle'] + '}edSignature')
     run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify', archive, signature, **kwargs)
@@ -169,13 +184,11 @@ def republish(output, tools, previous):
         raise ValueError('The configured version must equal the currently published release')
     enclosure = item.find('enclosure')
     source = enclosure.get('url', '')
-    if not source.startswith(data['downloadURLPrefix']):
+    allowed = {data['downloadURL']} | {
+        url.rsplit('/', 1)[0] + '/' + ARCHIVE_NAME for url in data.get('legacyFeedURLs', [])}
+    if source not in allowed:
         raise ValueError('The published download must belong to this application')
-    name = source.removeprefix(data['downloadURLPrefix'])
-    if not re.fullmatch(r'DisplayDials(?:-\d+\.\d+\.\d+)?\.dmg', name):
-        raise ValueError('Unexpected published download name')
-    origin = 'https://storage.yandexcloud.net/teren.in/updates/display-dials/' + name
-    with urllib.request.urlopen(origin, timeout=60) as response:
+    with urllib.request.urlopen(origin_url(source), timeout=60) as response:
         content = response.read()
     if len(content) != int(enclosure.get('length')):
         raise ValueError('Published download length does not match the signed feed')
@@ -189,23 +202,25 @@ def republish(output, tools, previous):
 
 def previous(path):
     # Read the origin directly for the current build number and publication ETag.
-    origin = 'https://storage.yandexcloud.net/teren.in/updates/display-dials/appcast.xml'
-    request = urllib.request.Request(origin, headers={'Cache-Control': 'no-cache'})
+    data = config()
     path = pathlib.Path(path)
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            content = response.read()
-            etag = response.headers['ETag']
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            print('No previous release; preparing the first appcast.')
-            path.unlink(missing_ok=True)
-            path.with_suffix('.state.json').write_text(json.dumps({'etag': None}))
-            return
-        raise
-    read_feed(content)
-    pathlib.Path(path).write_bytes(content)
-    path.with_suffix('.state.json').write_text(json.dumps({'etag': etag}))
+    for url in [data['feedURL'], *data.get('legacyFeedURLs', [])]:
+        request = urllib.request.Request(origin_url(url), headers={'Cache-Control': 'no-cache'})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                content = response.read()
+                etag = response.headers['ETag'] if url == data['feedURL'] else None
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                continue
+            raise
+        read_feed(content)
+        path.write_bytes(content)
+        path.with_suffix('.state.json').write_text(json.dumps({'etag': etag, 'sourceURL': url}))
+        return
+    print('No previous release; preparing the first appcast.')
+    path.unlink(missing_ok=True)
+    path.with_suffix('.state.json').write_text(json.dumps({'etag': None}))
 
 
 def main():

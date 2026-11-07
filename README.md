@@ -35,7 +35,7 @@ are not changed just by opening the panel.
 
 ## Install or build locally
 
-Download the current release from the permanent [DisplayDials.dmg](https://teren.in/updates/display-dials/DisplayDials.dmg) link.
+Download the current release from the permanent [DisplayDials.dmg](https://teren.in/apps/DisplayDials.dmg) link.
 Each publication replaces this file; the download name does not include a version.
 
 Open the downloaded DMG, drag **Display Dials.app** onto the **Applications**
@@ -67,7 +67,7 @@ The first row of **More options (…)** displays the running app's version from 
 bundle metadata. [release.json](release.json) defines the source version and build
 number; it does not prove that a corresponding release has already been published.
 
-Sparkle checks the [stable update feed](https://teren.in/updates/display-dials/appcast.xml).
+Sparkle checks the [stable update feed](https://teren.in/apps/feeds/display-dials.xml).
 Automatic checks and automatic installation default to enabled; saved user
 preferences take precedence. Use **Check for Updates…** to check manually, or
 change the two automatic-update preferences in the same menu. Automatic installation

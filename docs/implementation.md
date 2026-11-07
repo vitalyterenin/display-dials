@@ -10,7 +10,7 @@
 | `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
 | `Sources/UsageTelemetry/` | Consent gate, typed events, memory-only batches and TelemetryDeck transport |
 | `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
-| `release.json` | Version, increasing build number, feed URL, archive URL prefix, and public update key |
+| `release.json` | Version, increasing build number, feed/download URLs, application ID, and public update key |
 | `scripts/release.py` | Bundle metadata, release validation, and signed archive/appcast preparation |
 | `scripts/build-app.sh` | Release build, bundled Sparkle framework, and code signing |
 
@@ -121,7 +121,7 @@ which can wait for quit or permission.
 Release builds contain only arm64 slices, including bundled Sparkle executables.
 Releases use a compressed APFS DMG containing the app and an Applications shortcut;
 the same image supports manual installation and Sparkle updates.
-The public download is always `DisplayDials.dmg`, and the signed appcast contains
+The public download is always `/apps/DisplayDials.dmg`, and the signed appcast contains
 only the current release. Publication replaces both without retaining release files.
 The packaging script requires an `arm64` appcast hardware requirement, verifies
 archive and appcast Ed25519 signatures, and uses one persistent update identity.

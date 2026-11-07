@@ -10,13 +10,16 @@ import xml.etree.ElementTree as ET
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from release import config, object_key
 
 BUCKET = 'teren.in'
-PREFIX = 'updates/display-dials/'
-ORIGIN = 'https://storage.yandexcloud.net/' + BUCKET + '/' + PREFIX
+RELEASE = config()
 NS = {'sparkle': 'http://www.andymatuschak.org/xml-namespaces/sparkle'}
 ARCHIVE_NAME = 'DisplayDials.dmg'
-DOWNLOAD_URL = 'https://teren.in/' + PREFIX + ARCHIVE_NAME
+DOWNLOAD_URL = RELEASE['downloadURL']
+DOWNLOAD_KEY = object_key(DOWNLOAD_URL)
+FEED_KEY = object_key(RELEASE['feedURL'])
+ALLOWED_KEYS = {DOWNLOAD_KEY, FEED_KEY}
 NO_CACHE = 'no-store, max-age=0'
 
 
@@ -42,19 +45,23 @@ def publish(directory, client=None):
 
     # Check the credential boundary without creating or replacing any object.
     # An impossible ETag condition prevents mutation even if access is too broad.
-    try:
-        client.put_object(Bucket=BUCKET, Key='updates/display-dials-access-check',
-                          Body=b'', IfMatch='"00000000000000000000000000000000"')
-    except ClientError as error:
-        if error.response['ResponseMetadata']['HTTPStatusCode'] != 403:
-            raise ValueError('Publisher is not restricted to its application prefix') from error
-    else:
-        raise ValueError('Publisher unexpectedly wrote outside its application prefix')
-    print('Verified: publishing credential is restricted to this application prefix')
+    for key in ('index.html', 'apps/index.html', 'apps/OtherApp.dmg', 'apps/feeds/other-app.xml'):
+        try:
+            client.put_object(Bucket=BUCKET, Key=key,
+                              Body=b'', IfMatch='"00000000000000000000000000000000"')
+        except ClientError as error:
+            if error.response['ResponseMetadata']['HTTPStatusCode'] != 403:
+                raise ValueError('Publisher can access files outside its two release objects') from error
+        else:
+            raise ValueError('Publisher unexpectedly wrote an unrelated file')
+    print('Verified: publisher cannot change site pages or another application')
+
+    def key_for(name):
+        return DOWNLOAD_KEY if name == ARCHIVE_NAME else FEED_KEY
 
     def get(name):
         try:
-            response = client.get_object(Bucket=BUCKET, Key=PREFIX + name)
+            response = client.get_object(Bucket=BUCKET, Key=key_for(name))
             return response['Body'].read(), response['ETag']
         except ClientError as error:
             if error.response['ResponseMetadata']['HTTPStatusCode'] != 404:
@@ -82,7 +89,7 @@ def publish(directory, client=None):
                 raise ValueError('A build number cannot be reused for different app bytes')
 
     def put(name, content, content_type, cache_control, condition):
-        client.put_object(Bucket=BUCKET, Key=PREFIX + name, Body=content,
+        client.put_object(Bucket=BUCKET, Key=key_for(name), Body=content,
                           ContentType=content_type, CacheControl=cache_control,
                           ContentMD5=base64.b64encode(hashlib.md5(content).digest()).decode(),
                           **condition)
@@ -92,7 +99,7 @@ def publish(directory, client=None):
         raise ValueError('The current build already has different download bytes')
     condition = {'IfMatch': archive_etag} if archive_etag else {'IfNoneMatch': '*'}
     put(filename, archive, 'application/x-apple-diskimage', NO_CACHE, condition)
-    uploaded = client.get_object(Bucket=BUCKET, Key=PREFIX + filename)['Body'].read()
+    uploaded = client.get_object(Bucket=BUCKET, Key=DOWNLOAD_KEY)['Body'].read()
     if uploaded != archive:
         raise ValueError('Uploaded archive differs from the verified artifact; feed was not changed')
     condition = {'IfMatch': current_etag} if current_etag else {'IfNoneMatch': '*'}
@@ -101,14 +108,14 @@ def publish(directory, client=None):
     except ClientError as error:
         if error.response['ResponseMetadata']['HTTPStatusCode'] != 412:
             raise
-        existing = client.get_object(Bucket=BUCKET, Key=PREFIX + 'appcast.xml')['Body'].read()
+        existing = client.get_object(Bucket=BUCKET, Key=FEED_KEY)['Body'].read()
         if existing != feed:
             raise ValueError('The published feed changed during this release; refusing to overwrite it') from error
-    published = client.get_object(Bucket=BUCKET, Key=PREFIX + 'appcast.xml')['Body'].read()
+    published = client.get_object(Bucket=BUCKET, Key=FEED_KEY)['Body'].read()
     if published != feed:
         raise ValueError('Published feed differs from the verified artifact')
-    print('Published: https://teren.in/' + PREFIX + filename)
-    print('Feed: https://teren.in/' + PREFIX + 'appcast.xml')
+    print('Published: ' + DOWNLOAD_URL)
+    print('Feed: ' + RELEASE['feedURL'])
 
 
 if __name__ == '__main__':
