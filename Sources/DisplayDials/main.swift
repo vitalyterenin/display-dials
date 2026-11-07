@@ -14,13 +14,14 @@ final class PanelController: NSViewController, NSMenuDelegate {
     static let size = NSSize(width: 288, height: 116)
     let warmth = DDWarmthClient()
     let updates = UpdateController()
-    let telemetry = UsageTelemetry(
+    private(set) lazy var telemetry = UsageTelemetry(
         appID: Bundle.main.object(forInfoDictionaryKey: "TelemetryDeckAppID") as? String,
         version: AppIdentity.version,
         build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Development",
         runtimeAllowed: Bundle.main.bundleURL.pathExtension == "app"
             && !CommandLine.arguments.contains("--smoke-test")
-            && !CommandLine.arguments.contains("--diagnostics")
+            && !CommandLine.arguments.contains("--diagnostics"),
+        makeTransport: { TelemetryDeckTransport() }
     )
     private var statisticsPreferences: StatisticsPreferences?
     private let warmthToggle = NSSwitch()
