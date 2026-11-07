@@ -1,6 +1,6 @@
 {
-  "version": "0.5.0",
-  "build": "8",
+  "version": "0.5.1",
+  "build": "9",
   "feedURL": "https://teren.in/updates/display-dials/appcast.xml",
   "downloadURLPrefix": "https://teren.in/updates/display-dials/",
   "publicEDKey": "vR8oWg0SSkNnKLEfRrI3Pwdo1JkbyvU1kkwYWEN29IQ="

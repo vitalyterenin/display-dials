@@ -10,6 +10,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -74,6 +75,18 @@ def read_feed(content):
                   for item in root.findall('./channel/item')]
 
 
+def create_disk_image(app, archive):
+    # One image serves both Finder installation and Sparkle updates.
+    with tempfile.TemporaryDirectory(prefix='display-dials-dmg-') as staging:
+        staging = pathlib.Path(staging)
+        run('ditto', app, staging / app.name)
+        (staging / 'Applications').symlink_to('/Applications')
+        run('hdiutil', 'create', '-volname', 'Display Dials',
+            '-srcfolder', staging, '-fs', 'APFS', '-format', 'ULFO',
+            '-nospotlight', archive)
+    run('hdiutil', 'verify', archive)
+
+
 def package(app, output, tools, previous):
     data = config()
     output = pathlib.Path(output).resolve()
@@ -93,7 +106,7 @@ def package(app, output, tools, previous):
         ['lipo', '-archs', str(app / 'Contents/MacOS/DisplayDials')], text=True).strip()
     if architectures != 'arm64':
         raise ValueError('Releases must contain only the arm64 app binary')
-    archive = output / f'DisplayDials-{data["version"]}.zip'
+    archive = output / f'DisplayDials-{data["version"]}.dmg'
     if previous:
         previous = pathlib.Path(previous)
         content = previous.read_bytes()
@@ -104,7 +117,7 @@ def package(app, output, tools, previous):
     state_file = pathlib.Path(previous).with_suffix('.state.json') if previous else None
     state = json.loads(state_file.read_text()) if state_file and state_file.exists() else {'etag': None}
     (output / 'publication.json').write_text(json.dumps(state))
-    run('ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', app, archive)
+    create_disk_image(app, archive)
     args, kwargs = signing_args()
     run(pathlib.Path(tools) / 'bin/generate_appcast', *args,
         '--download-url-prefix', data['downloadURLPrefix'],

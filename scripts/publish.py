@@ -25,7 +25,7 @@ def publish(directory, client=None):
     latest = max(root.findall('./channel/item'),
                  key=lambda item: int(item.findtext('sparkle:version', namespaces=NS)))
     filename = latest.find('enclosure').get('url').removeprefix('https://teren.in/' + PREFIX)
-    if '/' in filename or not filename.startswith('DisplayDials-') or not filename.endswith('.zip'):
+    if '/' in filename or not filename.startswith('DisplayDials-') or not filename.endswith('.dmg'):
         raise ValueError('Unexpected update archive name')
     archive = (directory / filename).read_bytes()
     for name, content in [(filename, archive), ('appcast.xml', feed)]:
@@ -56,7 +56,7 @@ def publish(directory, client=None):
                           **condition)
 
     try:
-        put(filename, archive, 'application/zip', 'public, max-age=31536000, immutable',
+        put(filename, archive, 'application/x-apple-diskimage', 'public, max-age=31536000, immutable',
             {'IfNoneMatch': '*'})
     except ClientError as error:
         if error.response['ResponseMetadata']['HTTPStatusCode'] != 412:
