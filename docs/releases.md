@@ -83,6 +83,17 @@ must pass before older DMG assets are removed. A failed feed deployment preserve
 older downloads and must be fixed before declaring the release complete. The
 workflow serializes releases rather than cancelling an in-flight publisher.
 
+Public byte verification uses the same bounded polling helper before staging
+Pages and before old-DMG cleanup: at most 24 attempts, with a 120-second monotonic
+retry/acceptance deadline and waits of at most five seconds. Missing or cached
+bytes and selected transient HTTP/transport errors can retry; other HTTP errors
+and TLS failures stop immediately. Each default HTTP request receives at most
+60 seconds or the remaining budget, whichever is smaller. Responses completing
+after the deadline are rejected. Python's socket timeout applies to blocking
+operations, so it is not a forceful whole-response cancellation deadline.
+GitHub mutations and identity/signature/build checks are not retried by this
+helper. Failure prevents Pages staging or old-DMG cleanup at the respective gate.
+
 GitHub controls CDN caching. A cached older feed can briefly disagree with the
 current DMG; Sparkle rejects the mismatch and a fresh check can retry. Never disable
 signature checks to mask caching or deployment failures. Bounded verification waits
@@ -130,7 +141,9 @@ bash scripts/build-app.sh
 Publication tests use fake GitHub/network clients and never upload live files.
 They cover artifact tampering, stale feeds, repository/tag boundaries, downgrade
 and build reuse rejection, exact-byte retry, and cleanup only after public
-verification. All Python publication code uses the standard library.
+verification. Public-read tests also cover transient errors, HTTP classification,
+cached responses, deadline exhaustion and propagation of remaining request timeouts.
+All Python publication code uses the standard library.
 
 Build/cache paths stay outside Documents. Overrides: `DISPLAY_DIALS_BUILD_DIR`,
 `DISPLAY_DIALS_OUTPUT_DIR`, `DISPLAY_DIALS_TOOLS_DIR`, `DISPLAY_DIALS_SIGN_KEYCHAIN`,

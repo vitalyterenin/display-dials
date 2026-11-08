@@ -2,10 +2,12 @@
 """Publish a verified DMG to GitHub Releases, then verify Pages and prune old DMGs."""
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import pathlib
 import re
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -13,14 +15,51 @@ import urllib.request
 from release import ARCHIVE_NAME, NS, config, read_feed
 
 
-def public_bytes(url):
+def public_bytes(url, timeout=60):
+    """Read bytes using urllib's per-operation socket timeout."""
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={'Cache-Control': 'no-cache'}), timeout=60) as response:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={'Cache-Control': 'no-cache'}), timeout=timeout) as response:
             return response.read()
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return None
         raise
+
+
+def wait_for_public_bytes(expected, *, fetch=None, attempts=24, timeout=120,
+                          sleep=time.sleep, clock=time.monotonic):
+    """Poll exact bytes within a retry/acceptance deadline; no publication mutations."""
+    if attempts < 1 or timeout <= 0:
+        raise ValueError('Public verification needs positive attempt and timeout limits')
+    deadline = clock() + timeout
+    for attempt in range(attempts):
+        matches = True
+        try:
+            for url, body in expected:
+                remaining = deadline - clock()
+                if remaining <= 0:
+                    return False
+                actual = fetch(url) if fetch is not None else public_bytes(url, timeout=min(60, remaining))
+                if actual != body:
+                    matches = False
+                    break
+        except urllib.error.HTTPError as error:
+            # HTTPError is also a URLError; do not retry authentication or policy failures.
+            if error.code not in (404, 408, 429, 500, 502, 503, 504):
+                raise
+        except urllib.error.URLError as error:
+            if isinstance(error.reason, ssl.SSLError):
+                raise
+        except (TimeoutError, ConnectionError, http.client.IncompleteRead):
+            pass
+        else:
+            if matches and clock() < deadline:
+                return True
+        remaining = deadline - clock()
+        if attempt + 1 == attempts or remaining <= 0:
+            break
+        sleep(min(5, remaining))
+    return False
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -84,8 +123,10 @@ def load(directory):
     return data, state, feed, archive
 
 
-def publish(directory, client=None, fetch=public_bytes):
+def publish(directory, client=None, fetch=None, attempts=24, sleep=time.sleep,
+            timeout=120, clock=time.monotonic):
     data, state, feed, archive = load(directory)
+    read = fetch or public_bytes
     repository = data['githubRepository']
     if os.environ.get('GITHUB_REPOSITORY', repository) != repository:
         raise ValueError('Publication is restricted to its own repository')
@@ -111,7 +152,7 @@ def publish(directory, client=None, fetch=public_bytes):
     previous_url = state['sourceURL']
     if previous_url != data['feedURL']:
         raise ValueError('Unexpected previous feed source')
-    current = fetch(previous_url)
+    current = read(previous_url)
     current_hash = hashlib.sha256(current).hexdigest() if current is not None else None
     if current != feed and current_hash != state['previousFeedSHA256']:
         raise ValueError('The feed changed before publication')
@@ -123,7 +164,7 @@ def publish(directory, client=None, fetch=public_bytes):
     if release and not release['draft']:
         # Retry only with the exact already-published archive; never replace its bytes.
         asset = next((a for a in release['assets'] if a['name'] == ARCHIVE_NAME), None)
-        if asset is None or fetch(asset['browser_download_url']) != archive:
+        if asset is None or read(asset['browser_download_url']) != archive:
             raise ValueError('This release already exists with different archive bytes')
         client.request('/releases/' + str(release['id']), 'PATCH', {'make_latest': 'true'})
     else:
@@ -137,8 +178,9 @@ def publish(directory, client=None, fetch=public_bytes):
                 client.request('/releases/assets/' + str(asset['id']), 'DELETE')
         client.upload(release['id'], ARCHIVE_NAME, archive)
         client.request('/releases/' + str(release['id']), 'PATCH', {'draft': False, 'make_latest': 'true'})
-    if fetch(data['downloadURL']) != archive:
-        raise ValueError('Public download differs from the verified archive')
+    if not wait_for_public_bytes([(data['downloadURL'], archive)], fetch=fetch,
+                                 attempts=attempts, timeout=timeout, sleep=sleep, clock=clock):
+        raise ValueError('Public download did not converge with the verified archive; Pages was not staged')
     pages = pathlib.Path(directory) / 'pages'
     pages.mkdir(exist_ok=True)
     (pages / 'appcast.xml').write_bytes(feed)
@@ -147,14 +189,12 @@ def publish(directory, client=None, fetch=public_bytes):
     print('GitHub DMG verified; signed feed is ready for Pages deployment')
 
 
-def verify(directory, client=None, fetch=public_bytes, attempts=24, sleep=time.sleep):
+def verify(directory, client=None, fetch=None, attempts=24, sleep=time.sleep,
+           timeout=120, clock=time.monotonic):
     data, _, feed, archive = load(directory)
-    for attempt in range(attempts):
-        if fetch(data['feedURL']) == feed and fetch(data['downloadURL']) == archive:
-            break
-        if attempt + 1 == attempts:
-            raise ValueError('Public feed/download did not converge; older downloads were preserved')
-        sleep(5)
+    if not wait_for_public_bytes([(data['feedURL'], feed), (data['downloadURL'], archive)],
+                                 fetch=fetch, attempts=attempts, timeout=timeout, sleep=sleep, clock=clock):
+        raise ValueError('Public feed/download did not converge; older downloads were preserved')
     client = client or GitHub(data['githubRepository'])
     tag = 'v' + data['version']
     latest = client.request('/releases/latest')

@@ -1,11 +1,16 @@
 import copy
+from contextlib import closing
 import hashlib
+import http.client
+import io
 import json
 import os
 from pathlib import Path
+import ssl
 import sys
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
@@ -35,6 +40,67 @@ class Client:
     @property
     def mutations(self):
         return [c for c in self.calls if c[0] == 'upload' or c[1] != 'GET']
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0
+        self.sleeps = []
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class PublicReadTests(unittest.TestCase):
+    def test_selected_transient_errors_retry_then_accept_exact_bytes(self):
+        errors = [urllib.error.HTTPError('https://example.test', code, 'transient', {}, None)
+                  for code in (404, 408, 429, 500, 502, 503, 504)]
+        errors += [urllib.error.URLError('temporary connection failure'), TimeoutError(),
+                   ConnectionResetError(), http.client.IncompleteRead(b'partial')]
+        for error in errors:
+            with self.subTest(error=repr(error)):
+                clock = Clock()
+                with patch.object(publish, 'public_bytes', side_effect=[error, b'exact']) as fetch:
+                    self.assertTrue(publish.wait_for_public_bytes([('https://example.test', b'exact')],
+                        attempts=2, sleep=clock.sleep, clock=clock))
+                self.assertEqual(fetch.call_count, 2)
+                self.assertEqual(clock.sleeps, [5])
+
+    def test_permanent_errors_fail_without_retry(self):
+        errors = [urllib.error.HTTPError('https://example.test', code, 'permanent', {}, None)
+                  for code in (400, 401, 403, 410, 501, 505)]
+        errors += [urllib.error.URLError(ssl.SSLCertVerificationError('untrusted certificate')),
+                   ValueError('invalid response')]
+        for error in errors:
+            with self.subTest(error=repr(error)):
+                clock = Clock()
+                with patch.object(publish, 'public_bytes', side_effect=error) as fetch:
+                    with self.assertRaises(type(error)):
+                        publish.wait_for_public_bytes([('https://example.test', b'exact')],
+                            sleep=clock.sleep, clock=clock)
+                fetch.assert_called_once()
+                self.assertFalse(clock.sleeps)
+
+    def test_missing_and_cached_bytes_retry_within_attempt_limit(self):
+        clock = Clock()
+        with patch.object(publish, 'public_bytes', side_effect=[None, b'cached', b'exact']) as fetch:
+            self.assertTrue(publish.wait_for_public_bytes([('https://example.test', b'exact')],
+                attempts=3, sleep=clock.sleep, clock=clock))
+        self.assertEqual(fetch.call_count, 3)
+        self.assertEqual(clock.sleeps, [5, 5])
+
+    def test_matching_bytes_after_deadline_are_rejected(self):
+        clock = Clock()
+        def fetch(url):
+            clock.now += 3
+            return b'exact'
+        self.assertFalse(publish.wait_for_public_bytes([('https://example.test', b'exact')],
+            fetch=fetch, timeout=2, sleep=clock.sleep, clock=clock))
+        self.assertFalse(clock.sleeps)
 
 
 class PublishTests(unittest.TestCase):
@@ -75,6 +141,52 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((self.root / 'pages/appcast.xml').read_bytes(), self.feed)
         self.assertIn(('upload', 42, publish.ARCHIVE_NAME), self.client.calls)
         self.assertEqual(self.client.mutations[-1][2], {'draft': False, 'make_latest': 'true'})
+
+    def test_publish_retries_public_download_without_repeating_mutations(self):
+        clock = Clock()
+        downloads = []
+        def fetch(url):
+            if url == self.data['feedURL']:
+                return self.old
+            downloads.append(url)
+            if len(downloads) == 1:
+                raise urllib.error.URLError('temporary connection failure')
+            return self.archive
+        publish.publish(self.root, self.client, fetch, sleep=clock.sleep, clock=clock)
+        self.assertEqual(downloads, [self.data['downloadURL']] * 2)
+        self.assertEqual(clock.sleeps, [5])
+        self.assertEqual(len(self.client.mutations), 3)
+        self.assertEqual((self.root / 'pages/appcast.xml').read_bytes(), self.feed)
+
+    def test_failed_download_verification_does_not_stage_pages(self):
+        for response in [b'cached', urllib.error.URLError('temporary connection failure')]:
+            with self.subTest(response=repr(response)):
+                clock = Clock()
+                self.client = Client()
+                reads = []
+                def fetch(url):
+                    if url == self.data['feedURL']:
+                        return self.old
+                    reads.append(url)
+                    if isinstance(response, Exception):
+                        raise response
+                    return response
+                with self.assertRaisesRegex(ValueError, 'Pages was not staged'):
+                    publish.publish(self.root, self.client, fetch, attempts=2,
+                                    sleep=clock.sleep, clock=clock)
+                self.assertEqual(len(reads), 2)
+                self.assertEqual(len(self.client.mutations), 3)
+                self.assertFalse((self.root / 'pages').exists())
+                self.assertFalse(any(c[1] == 'DELETE' for c in self.client.calls))
+
+    def test_failed_github_mutation_is_not_retried(self):
+        clock = Clock()
+        with patch.object(self.client, 'upload', side_effect=urllib.error.URLError('upload failed')) as upload:
+            with self.assertRaises(urllib.error.URLError):
+                publish.publish(self.root, self.client, self.fetch, sleep=clock.sleep, clock=clock)
+            upload.assert_called_once()
+        self.assertFalse(clock.sleeps)
+        self.assertFalse((self.root / 'pages').exists())
 
     def test_corrupt_artifact_cannot_mutate_github(self):
         (self.root / publish.ARCHIVE_NAME).write_bytes(b'changed')
@@ -132,6 +244,70 @@ class PublishTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'did not converge'):
             publish.verify(self.root, self.client, self.fetch, attempts=1)
         self.assertFalse(self.client.mutations)
+
+    def test_transient_verification_exhaustion_never_calls_github(self):
+        clock = Clock()
+        with patch.object(publish, 'public_bytes', side_effect=urllib.error.URLError('offline')) as fetch:
+            with self.assertRaisesRegex(ValueError, 'older downloads were preserved'):
+                publish.verify(self.root, self.client, attempts=2, sleep=clock.sleep, clock=clock)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertFalse(self.client.calls)
+
+    def test_verification_deadline_caps_sleep_and_prevents_cleanup(self):
+        clock = Clock()
+        with patch.object(publish, 'public_bytes', return_value=b'cached') as fetch:
+            with self.assertRaisesRegex(ValueError, 'did not converge'):
+                publish.verify(self.root, self.client, timeout=6, sleep=clock.sleep, clock=clock)
+        self.assertEqual(clock.sleeps, [5, 1])
+        self.assertEqual(clock.now, 6)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertFalse(self.client.calls)
+
+    def test_permanent_http_error_prevents_cleanup_without_retry(self):
+        clock = Clock()
+        error = urllib.error.HTTPError(self.data['feedURL'], 403, 'forbidden', {}, None)
+        with patch.object(publish, 'public_bytes', side_effect=error) as fetch:
+            with self.assertRaises(urllib.error.HTTPError):
+                publish.verify(self.root, self.client, sleep=clock.sleep, clock=clock)
+        fetch.assert_called_once()
+        self.assertFalse(clock.sleeps)
+        self.assertFalse(self.client.calls)
+
+    def test_zero_attempts_cannot_skip_verification(self):
+        with self.assertRaisesRegex(ValueError, 'positive attempt'):
+            publish.verify(self.root, self.client, self.fetch, attempts=0)
+        self.assertFalse(self.client.calls)
+
+    def test_default_fetch_receives_remaining_timeout_for_each_url(self):
+        clock = Clock()
+        self.client.latest = {'tag_name': 'v' + self.data['version']}
+        requests = []
+        def open_url(request, timeout):
+            requests.append((request.full_url, timeout))
+            clock.now += 2
+            body = self.feed if request.full_url == self.data['feedURL'] else self.archive
+            return closing(io.BytesIO(body))
+        with patch.object(publish.urllib.request, 'urlopen', side_effect=open_url):
+            publish.verify(self.root, self.client, timeout=10, sleep=clock.sleep, clock=clock)
+        self.assertEqual(requests, [(self.data['feedURL'], 10), (self.data['downloadURL'], 8)])
+        self.assertFalse(clock.sleeps)
+
+    def test_cached_archive_requires_both_public_files_to_match_before_cleanup(self):
+        clock = Clock()
+        self.client.latest = {'tag_name': 'v' + self.data['version']}
+        self.client.releases = [{'tag_name': 'v0.0.1', 'draft': False,
+                                 'assets': [{'id': 1, 'name': publish.ARCHIVE_NAME}]}]
+        requests = []
+        def fetch(url):
+            self.assertFalse(self.client.calls, 'Cleanup must wait for all public bytes to match.')
+            requests.append(url)
+            if url == self.data['feedURL']:
+                return self.feed
+            return b'cached' if len(requests) == 2 else self.archive
+        publish.verify(self.root, self.client, fetch, sleep=clock.sleep, clock=clock)
+        self.assertEqual(requests, [self.data['feedURL'], self.data['downloadURL']] * 2)
+        self.assertEqual(clock.sleeps, [5])
+        self.assertEqual(self.client.mutations, [('/releases/assets/1', 'DELETE', None)])
 
     def test_cleanup_preserves_current_drafts_tags_and_unrelated_assets(self):
         self.client.latest = {'tag_name': 'v' + self.data['version']}
