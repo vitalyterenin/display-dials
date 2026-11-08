@@ -105,6 +105,12 @@ class PublishTests(unittest.TestCase):
             publish.publish(self.root, self.client, self.fetch)
         self.assertFalse(self.client.mutations)
 
+    def test_cached_pages_cannot_allow_reusing_latest_github_build(self):
+        self.client.latest = {'tag_name': 'v0.0.1', 'body': f"Build {self.data['build']}."}
+        with self.assertRaisesRegex(ValueError, 'latest GitHub release'):
+            publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(self.client.mutations)
+
     def test_existing_release_can_only_reuse_exact_bytes(self):
         self.client.existing = {'id': 42, 'draft': False, 'assets': [
             {'name': publish.ARCHIVE_NAME, 'browser_download_url': 'https://example.test/dmg'}]}

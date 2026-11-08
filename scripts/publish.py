@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -103,6 +104,10 @@ def publish(directory, client=None, fetch=public_bytes):
     latest = client.request('/releases/latest')
     if latest and tuple(map(int, latest['tag_name'].removeprefix('v').split('.'))) > tuple(map(int, data['version'].split('.'))):
         raise ValueError('Refusing to replace a newer release')
+    if latest and latest['tag_name'] != tag:
+        published_build = re.search(r'\bBuild ([1-9]\d*)\.', latest.get('body', ''))
+        if published_build is None or int(data['build']) <= int(published_build[1]):
+            raise ValueError('Build must exceed the latest GitHub release even if Pages is cached')
     previous_url = state['sourceURL']
     if previous_url not in [data['feedURL'], *data.get('legacyFeedURLs', [])]:
         raise ValueError('Unexpected previous feed source')
@@ -126,7 +131,7 @@ def publish(directory, client=None, fetch=public_bytes):
             release = client.request('/releases', 'POST', {
                 'tag_name': tag, 'target_commitish': target['sha'], 'name': data['name'] + ' ' + data['version'],
                 'draft': True, 'prerelease': False,
-                'body': 'Stable Apple Silicon release. Requires macOS 13 or later.'})
+                'body': f"Build {data['build']}. Stable Apple Silicon release. Requires macOS 13 or later."})
         for asset in release['assets']:
             if asset['name'] == ARCHIVE_NAME:
                 client.request('/releases/assets/' + str(asset['id']), 'DELETE')
