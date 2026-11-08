@@ -25,3 +25,8 @@ xcrun swiftc Sources/DisplayDials/OptionsMenuPresentation.swift Tests/MenuPresen
 xcrun swiftc Sources/DisplayDials/OptionsMenuPresentation.swift Tests/MenuLayoutIntegration.swift \
     -o "$build_dir/menu-layout-integration"
 "$build_dir/menu-layout-integration"
+
+# Verify immediate tick actions while mouse tracking is still active, without OS writes.
+xcrun swiftc Sources/DisplayDials/WarmthSlider.swift Tests/WarmthSliderTests.swift \
+    -o "$build_dir/warmth-slider-tests"
+"$build_dir/warmth-slider-tests"
