@@ -82,6 +82,15 @@ class PublishTests(unittest.TestCase):
             publish.publish(self.root, self.client, self.fetch)
         self.assertFalse(self.client.calls)
 
+    def test_non_github_previous_feed_cannot_be_fetched_or_published(self):
+        self.state['sourceURL'] = 'https://example.invalid/appcast.xml'
+        self.save_state()
+        with patch.object(publish, 'public_bytes') as fetch:
+            with self.assertRaisesRegex(ValueError, 'previous feed source'):
+                publish.publish(self.root, self.client, fetch)
+            fetch.assert_not_called()
+        self.assertFalse(self.client.mutations)
+
     def test_stale_feed_cannot_mutate_release(self):
         with self.assertRaisesRegex(ValueError, 'feed changed'):
             publish.publish(self.root, self.client, lambda url: b'changed')

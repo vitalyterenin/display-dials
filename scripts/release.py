@@ -43,11 +43,6 @@ def config():
         raise ValueError('Expected the permanent app-named GitHub Releases download')
     if data['feedURL'] != f'https://{owner.lower()}.github.io/{repo}/appcast.xml':
         raise ValueError('Expected this repository\'s GitHub Pages appcast')
-    allowed_legacy = {f"https://teren.in/apps/feeds/{data['id']}.xml"}
-    if data['id'] == 'display-dials':
-        allowed_legacy.add('https://teren.in/updates/display-dials/appcast.xml')
-    if not set(data.get('legacyFeedURLs', [])).issubset(allowed_legacy):
-        raise ValueError('Unexpected legacy updater URL')
     uuid.UUID(data['telemetryDeckAppID'])
     source_files()
     certificate()
@@ -182,26 +177,19 @@ def prepare_feed(output, tools, data, state):
 def previous(path):
     data = config()
     path = pathlib.Path(path)
-    for url in [data['feedURL'], *data.get('legacyFeedURLs', [])]:
-        request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache'})
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                content = response.read()
-        except urllib.error.HTTPError as error:
-            if error.code == 404:
-                continue
-            raise
-        read_feed(content)
-        path.write_bytes(content)
-        path.with_suffix('.state.json').write_text(json.dumps({
-            'previousFeedSHA256': hashlib.sha256(content).hexdigest(), 'sourceURL': url}))
-        return
-    if data.get('legacyFeedURLs'):
-        raise ValueError('An established application must have a reachable previous signed feed')
-    print('No previous release; preparing the first appcast.')
-    path.unlink(missing_ok=True)
+    url = data['feedURL']
+    request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache'})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            content = response.read()
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise ValueError('An established application must have a reachable GitHub Pages feed') from error
+        raise
+    read_feed(content)
+    path.write_bytes(content)
     path.with_suffix('.state.json').write_text(json.dumps({
-        'previousFeedSHA256': None, 'sourceURL': data['feedURL']}))
+        'previousFeedSHA256': hashlib.sha256(content).hexdigest(), 'sourceURL': url}))
 
 
 def main():
