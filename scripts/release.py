@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
+from licenses import source_files, stage_distribution, verify_bundle, verify_distribution
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ACCOUNT = 'com.vitalyterenin.displaydials'
@@ -47,6 +48,7 @@ def config():
     if not set(data.get('legacyFeedURLs', [])).issubset(allowed_legacy):
         raise ValueError('Unexpected legacy updater URL')
     uuid.UUID(data['telemetryDeckAppID'])
+    source_files()
     return data
 
 
@@ -95,10 +97,18 @@ def create_disk_image(app, archive):
         staging = pathlib.Path(staging)
         run('ditto', app, staging / app.name)
         (staging / 'Applications').symlink_to('/Applications')
+        stage_distribution(staging / app.name, staging)
         run('hdiutil', 'create', '-volname', 'Display Dials',
             '-srcfolder', staging, '-fs', 'APFS', '-format', 'ULFO',
             '-nospotlight', archive)
     run('hdiutil', 'verify', archive)
+    with tempfile.TemporaryDirectory(prefix='license-image-check-') as mount:
+        run('hdiutil', 'attach', '-readonly', '-nobrowse', '-mountpoint', mount, archive)
+        try:
+            verify_distribution(mount, app.name)
+        finally:
+            run('hdiutil', 'detach', mount)
+
 
 
 def package(app, output, tools, previous):
@@ -116,6 +126,7 @@ def package(app, output, tools, previous):
                           ('SUFeedURL', data['feedURL'])]:
         if plist.get(key) != expected:
             raise ValueError(f'Built app has unexpected {key}; rebuild it')
+    verify_bundle(app)
     run('codesign', '--verify', '--deep', '--strict', app)
     architectures = subprocess.check_output(
         ['lipo', '-archs', str(app / 'Contents/MacOS/DisplayDials')], text=True).strip()

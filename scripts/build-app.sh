@@ -37,6 +37,8 @@ done
 python3 scripts/release.py plist "$app_dir/Contents/Info.plist"
 mkdir -p "$app_dir/Contents/Resources"
 cp Resources/PrivacyInfo.xcprivacy "$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
+python3 scripts/licenses.py install --app "$app_dir" \
+    --sparkle-license "$build_dir/checkouts/Sparkle/LICENSE"
 # Compile all standard and Retina icon sizes from the approved transparent source.
 iconset="$staging/AppIcon.iconset"
 mkdir -p "$iconset"
