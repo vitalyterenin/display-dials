@@ -74,9 +74,13 @@ assigned on this bucket, rather than granting access across the cloud folder.
 
 1. Update `version` and increase `build` in `release.json`. Use a new version and a
    build greater than every build already in the published feed.
-2. Run validation and local checks, then commit and push the source changes.
-3. Push a new tag equal to `v` plus the configured version.
-4. Wait for **Release Display Dials** to finish both build and publish jobs.
+2. Complete the whole-app documentation review required by the shared
+   [app-release skill](https://github.com/vitalyterenin/app-release-kit/blob/main/skills/app-release/SKILL.md).
+   Reconcile all maintained documentation, examples and images with current code,
+   settings and workflows; record review evidence in the PR.
+3. Run validation and local checks, then commit/push and merge the checked revision.
+4. Push a new tag equal to `v` plus the configured version.
+5. Wait for **Release Display Dials** to finish both build and publish jobs.
 
 For example, after committing and pushing the intended source revision:
 

@@ -4,7 +4,8 @@ Usage statistics are optional and are sent to TelemetryDeck only after an explic
 choice to allow sharing. The developer uses them to understand feature usage,
 version adoption and failed setting changes. No accounts are required in the app.
 The first consent prompt also applies to users upgrading from earlier versions.
-Closing it counts as declining. Every feature remains available after declining.
+A quiet login launch defers an undecided prompt until the first manual opening.
+Closing the prompt counts as declining. Every feature remains available after declining.
 
 Change the choice in **More options (…) > Usage Statistics…**. Disabling sharing
 clears pending events, cancels outstanding requests where possible, and deletes
@@ -24,10 +25,13 @@ installations; they are not a count of unique people or a promise of complete an
 | `App.launched` | Normal app launch when sharing was already enabled |
 | `Statistics.enabled` | Sharing was explicitly enabled; no earlier actions are replayed |
 | `Panel.opened` | `source`: `launch`, `menuBar`, or `reopen` |
-| `NightShift.changed` | Requested `enabled` boolean and `succeeded` boolean, after a user action |
-| `Warmth.changed` | Requested `position` from 1 to 10 and `succeeded` boolean, once on drag completion (final requested position/result), or per keyboard/accessibility action |
+| `Warmth.changed` | Requested `position` from 1 to 10 (1 is Off; 2–10 are positive warmth levels) and `succeeded` boolean, once on drag completion (final requested position/result), or per keyboard/accessibility action |
 | `Updates.preferences` | `automaticChecks` and `automaticInstallation` booleans, on opted-in launch, opt-in, or preference change |
 | `Updates.manualCheck` | User requested an available manual update check |
+
+A completed drag emits at most one final slider event, rather than one per live
+tick. The removed switch emits no separate on/off event in this version; old
+versions may still have sent those events.
 
 There are no events for Night Shift polling, time spent idle, sleep/wake, or
 automatic system schedule changes. A running app with no interactions sends no
@@ -59,10 +63,10 @@ in app preferences. The ordinary updater operates independently of this choice.
 Diagnostics, smoke checks and raw SwiftPM executable runs cannot send statistics.
 Automated tests use isolated preferences and a capturing transport, not the service.
 
-The account uses the free plan, with 50,000 monthly events shared across up to three
-apps and access to the latest three months in reports. According to TelemetryDeck's
-[subscription FAQ](https://telemetrydeck.com/faq/subscription/), report retention
-is not a deletion deadline: older data is kept in cold storage. Its privacy FAQ
-does not guarantee a cold-storage deletion schedule. The free plan does not
-automatically upgrade to a paid plan; events can be discarded when the quota is
-exhausted. These are vendor terms, which may change.
+The developer uses a free plan. Event quotas and the accessible reporting window
+follow the account's current plan; see the vendor's
+[subscription FAQ](https://telemetrydeck.com/faq/subscription/). Reporting retention
+is not a deletion deadline: older data is retained in cold storage, with no deletion
+schedule promised by this app. Free plans do not automatically upgrade to paid
+plans; after their event allowance is exhausted, incoming events can be discarded.
+Vendor terms can change. Sources and payload disclosure reviewed on 2026-11-08.
