@@ -14,8 +14,7 @@ This app supports Apple Silicon only, macOS 13 or later, with one stable channel
 `release.json` owns the three-part version, increasing positive build, app name,
 repository, URLs and public Ed25519 update key. Keep the bundle ID and update key
 unchanged when moving computers or hosting. The project is MIT-licensed; third-party
-components retain their original terms. The personal Apps catalog is owned by the separate
-`teren-in` repository and is optional for downloading and updating this app.
+components retain their original terms.
 
 GitHub Actions retains encrypted `SPARKLE_PRIVATE_KEY`, `DISPLAY_DIALS_SIGNING_P12`
 and `DISPLAY_DIALS_SIGNING_PASSWORD` secrets. The first signs updater archives and
@@ -32,20 +31,21 @@ are preserved. There is one current DMG, with no version suffix in its filename.
 
 ## Publish
 
+Build and package release artifacts only in GitHub Actions; publish the DMG on
+GitHub Releases and the signed feed on GitHub Pages. Local checks and development
+builds are not release artifacts. The personal website is outside this workflow;
+do not inspect or change its content, listings, redirects or infrastructure.
+
 1. Refresh shared instructions, read this guide and the latest signed feed.
 2. Update version and build in `release.json`. Both identify a new published app;
    the build must exceed every published build. Run appropriate checks.
-3. Review all maintained documentation against the whole current app and prepare
-   any changed Apps card facts. Record the review scope and evidence in the PR.
+3. Review all maintained documentation against the whole current app. Record the
+   review scope and evidence in the PR.
 4. Push a branch, wait for required checks and merge the exact checked revision.
 5. Push a new `v<version>` tag on that commit. Tag publication is deployment.
 6. Wait for both **build** and **publish** jobs in **Release Display Dials**.
 7. Verify the actual public DMG/feed bytes, Ed25519 signatures, version/build,
    length, `arm64` requirement, and both permanent URLs.
-8. Reconcile the [Apps card](https://teren.in/apps/) through the
-   [catalog workflow](https://github.com/vitalyterenin/app-release-kit/blob/main/skills/app-release/references/catalog.md).
-   Commit/deploy changed facts in the website repository and inspect the live card.
-   An accurate card needs no cosmetic edit.
 
 From the repository root, after merging the intended source revision:
 
@@ -88,12 +88,9 @@ current DMG; Sparkle rejects the mismatch and a fresh check can retry. Never dis
 signature checks to mask caching or deployment failures. Bounded verification waits
 for Pages propagation and fails if the public objects do not converge.
 
-Former feed/download addresses on `teren.in`, including the early Display Dials
-`/updates/display-dials/` paths where applicable, remain compatible redirects.
-Installed apps with an old feed address must still reach the signed current feed.
-Do not remove those redirects after deleting obsolete storage objects. The first
-GitHub release can use `legacyFeedURLs` to read the prior signed feed; it must not
-silently treat an unreachable established app as a first publication.
+Always verify the prior signed feed and increasing build from the app
+configuration. An unreachable feed for an established app must not silently
+reset its publication history.
 
 ## Licenses in released builds
 
