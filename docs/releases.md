@@ -21,7 +21,7 @@ and `DISPLAY_DIALS_SIGNING_PASSWORD` secrets. The first signs updater archives a
 feeds; the other two restore this app's persistent code signing identity. Publication
 uses GitHub's short-lived token with repository contents, Pages and OIDC write
 permissions in the publish job only. Pull-request checks have no signing or
-publication secrets. No Yandex/S3 credentials are required.
+publication secrets.
 
 GitHub Pages must use **GitHub Actions** as its publishing source. The `github-pages`
 environment allows release tags matching `v*`. Keep releases mutable so the workflow
@@ -88,9 +88,9 @@ current DMG; Sparkle rejects the mismatch and a fresh check can retry. Never dis
 signature checks to mask caching or deployment failures. Bounded verification waits
 for Pages propagation and fails if the public objects do not converge.
 
-Always verify the prior signed feed and increasing build from the app
-configuration. An unreachable feed for an established app must not silently
-reset its publication history.
+The previous signed feed is read only from this repository's GitHub Pages URL.
+An unavailable feed stops the release; no alternate host or first-release reset is used.
+Verify the prior signature and increasing build before packaging.
 
 ## Licenses in released builds
 

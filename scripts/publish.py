@@ -109,7 +109,7 @@ def publish(directory, client=None, fetch=public_bytes):
         if published_build is None or int(data['build']) <= int(published_build[1]):
             raise ValueError('Build must exceed the latest GitHub release even if Pages is cached')
     previous_url = state['sourceURL']
-    if previous_url not in [data['feedURL'], *data.get('legacyFeedURLs', [])]:
+    if previous_url != data['feedURL']:
         raise ValueError('Unexpected previous feed source')
     current = fetch(previous_url)
     current_hash = hashlib.sha256(current).hexdigest() if current is not None else None

@@ -5,10 +5,6 @@
   "telemetryDeckAppID": "8DAED507-C688-4AAA-BBB6-1021563985A3",
   "feedURL": "https://vitalyterenin.github.io/display-dials/appcast.xml",
   "downloadURL": "https://github.com/vitalyterenin/display-dials/releases/latest/download/DisplayDials.dmg",
-  "legacyFeedURLs": [
-    "https://teren.in/apps/feeds/display-dials.xml",
-    "https://teren.in/updates/display-dials/appcast.xml"
-  ],
   "publicEDKey": "vR8oWg0SSkNnKLEfRrI3Pwdo1JkbyvU1kkwYWEN29IQ=",
   "githubRepository": "vitalyterenin/display-dials",
   "name": "Display Dials",
