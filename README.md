@@ -71,6 +71,16 @@ statistics and Sparkle system profiling is disabled.
 The app displays its running bundle version. Source metadata in
 [release.json](release.json) does not prove that a release has been published.
 
+## Remove
+
+1. If **Launch at Login** is enabled, turn it off in **More options (…)**.
+2. Choose **More options (…) > Quit Display Dials**.
+3. Move **Display Dials.app** from Applications (or its installed location) to Trash.
+
+Quitting or removing the app leaves the current Night Shift settings in place.
+To turn Night Shift off first, move the slider fully left before quitting.
+Its macOS schedule remains active.
+
 ## Optional usage statistics
 
 The first interactive launch/opening asks whether to share minimal usage events
@@ -135,3 +145,4 @@ Project code and assets are licensed under [MIT](LICENSE).
 Bundled components retain their [third-party licenses and notices](THIRD_PARTY_NOTICES.md).
 Both files are included in the DMG and in the installed app's
 `Contents/Resources/Licenses` directory, including automatic updates.
+
