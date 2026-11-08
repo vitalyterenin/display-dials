@@ -6,6 +6,7 @@
 | --- | --- |
 | `Sources/DisplayDials/main.swift` | Menu bar item, panel, More options menu, and diagnostic entry points |
 | `Sources/NightShiftBridge/` | Objective-C adapter for the private Night Shift API |
+| `Sources/DisplayDials/RuntimeStatus.swift` | Read-only local queries of the running app’s own state |
 | `Sources/DisplayDials/UpdateController.swift` | Sparkle startup, availability, and preferences |
 | `Sources/DisplayDials/WarmthAdjustment.swift` | Off/on mapping, ordered setting writes and failure handling |
 | `Sources/DisplayDials/WarmthSlider.swift` | Continuous native slider, tick deduplication and drag completion |
@@ -17,6 +18,7 @@
 | `release.json` | Version, increasing build number, feed/download URLs, application ID, and public update key |
 | `scripts/release.py` | Bundle metadata, release validation, and signed archive/appcast preparation |
 | `scripts/build-app.sh` | Release build, bundled Sparkle framework, notices, and code signing |
+| `scripts/signing.py` | Persistent certificate import, signing preflight and app/updater identity verification |
 | `scripts/licenses.py` | Approved MIT terms, dependency notices and app/DMG license verification |
 
 `AppIdentity.version` reads `CFBundleShortVersionString` from the running bundle.
@@ -157,12 +159,16 @@ The packaging script requires an `arm64` appcast hardware requirement, verifies
 archive and appcast Ed25519 signatures, and uses one persistent update identity.
 Bundle settings require signed feeds with no expiration fallback and verification
 before extraction. System profiling is disabled, and optional sandbox XPC services
-are removed from the bundle. Application signing is currently ad hoc.
+are removed from the bundle. Application signing uses the persistent per-app certificate pinned in
+`release.json`, including all updater executables. The build and finished-image
+checks reject a different signer, an ad hoc release or an identifier-only
+requirement. Local development can use ad hoc signatures but must not replace the
+installed stable app used for continuity checks.
 The app bundle and DMG carry the project MIT license and complete third-party
 notices; build and packaging verify them before publication.
 
-See [release operations](releases.md) for the publication pipeline and the future
-Developer ID/notarization transition.
+See [release operations](releases.md) for the publication pipeline and the persistent
+code signing and any later Developer ID/notarization transition.
 
 ## Launch at login
 
@@ -210,6 +216,12 @@ fixtures. These checks do not write Night Shift, register login items, start the
 updater or send statistics. Menu geometry tests briefly open their own popover/menu.
 The build script creates
 and signs the release bundle and verifies its code signature.
+
+`--status` queries the already running app through local distributed notifications,
+reporting its own version/build, Night Shift availability/state, native login-item
+status and update preferences. It does not start another UI, change settings or
+record a telemetry event. A two-second timeout reports that no compatible app is
+running. This avoids mistaking a trusted diagnostic caller's context for the app's.
 
 `--diagnostics` emits JSON containing app name/version, Night Shift support,
 diagnostic text, and current state. `--smoke-test` initializes the panel and exits;

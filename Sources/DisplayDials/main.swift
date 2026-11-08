@@ -284,6 +284,7 @@ final class PanelController: NSViewController {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var status: NSStatusItem!
     private let popover = NSPopover()
+    private let runtimeStatus = RuntimeStatus()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let launchedAtLogin = LoginItemController.wasLaunchedAtLogin
@@ -319,6 +320,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print("Display Dials: UI initialized; no display settings changed.")
             NSApp.terminate(nil)
         } else {
+            runtimeStatus.start { [weak controller] in
+                guard let controller else { return [:] }
+                return [
+                    "version": AppIdentity.version,
+                    "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Development",
+                    "nightShiftSupported": controller.warmth.supported,
+                    "nightShiftState": controller.warmth.readState() ?? [:],
+                    "loginItemStatus": controller.loginItem.status.rawValue,
+                    "loginItemEnabled": controller.loginItem.status == .enabled,
+                    "loginItemRequiresApproval": controller.loginItem.requiresApproval,
+                    "automaticChecks": controller.updates.automaticallyChecks,
+                    "automaticInstallation": controller.updates.automaticallyInstalls
+                ]
+            }
             controller.updates.start()
             controller.telemetry.start()
             controller.recordUpdatePreferences()
@@ -348,6 +363,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 }
+
+if CommandLine.arguments.contains("--status") { exit(RuntimeStatus.query() ? 0 : 1) }
 
 let app = NSApplication.shared
 if CommandLine.arguments.contains("--diagnostics") {

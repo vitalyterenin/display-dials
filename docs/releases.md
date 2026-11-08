@@ -16,7 +16,9 @@ repository, URLs and public Ed25519 update key. Keep the bundle ID and update ke
 unchanged when moving computers or hosting. The project is MIT-licensed; third-party
 components retain their original terms.
 
-GitHub Actions retains only the encrypted `SPARKLE_PRIVATE_KEY` secret. Publication
+GitHub Actions retains encrypted `SPARKLE_PRIVATE_KEY`, `DISPLAY_DIALS_SIGNING_P12`
+and `DISPLAY_DIALS_SIGNING_PASSWORD` secrets. The first signs updater archives and
+feeds; the other two restore this app's persistent code signing identity. Publication
 uses GitHub's short-lived token with repository contents, Pages and OIDC write
 permissions in the publish job only. Pull-request checks have no signing or
 publication secrets. No Yandex/S3 credentials are required.
@@ -63,7 +65,9 @@ the same verified artifact. A bad app or changed DMG requires a new version/buil
 
 ## Pipeline order and failure handling
 
-The macOS job validates configuration, tests, builds and ad hoc signs the app,
+The macOS job validates configuration and imports the pinned signing identity
+into an isolated temporary keychain. A native signing preflight runs before tests
+and compilation. It builds/signs the app and updater executables,
 verifies bundle metadata and arm64 executables, and packages an APFS DMG containing
 the app, Applications shortcut, LICENSE and THIRD_PARTY_NOTICES.md. It verifies the
 previous feed signature and increasing build, then signs and verifies the new archive and single-entry feed.
@@ -129,8 +133,12 @@ and build reuse rejection, exact-byte retry, and cleanup only after public
 verification. All Python publication code uses the standard library.
 
 Build/cache paths stay outside Documents. Overrides: `DISPLAY_DIALS_BUILD_DIR`,
-`DISPLAY_DIALS_OUTPUT_DIR`, `DISPLAY_DIALS_TOOLS_DIR`, and `DISPLAY_DIALS_SIGN_IDENTITY`
-(default `-`, ad hoc). `build-app.sh` replaces its generated app bundle.
+`DISPLAY_DIALS_OUTPUT_DIR`, `DISPLAY_DIALS_TOOLS_DIR`, `DISPLAY_DIALS_SIGN_KEYCHAIN`,
+and `DISPLAY_DIALS_REQUIRE_RELEASE_SIGNING`. A build without a signing keychain
+is a local ad hoc development build; packaging rejects it. Setting
+`DISPLAY_DIALS_REQUIRE_RELEASE_SIGNING=1` also stops the build for a missing
+keychain. Do not replace an installed stable copy with an ad hoc development build.
+`build-app.sh` replaces its generated app bundle.
 `scripts/sparkle-tools.sh` downloads pinned Sparkle 2.10.1 and checks its archive
 hash. Local signing uses the existing Keychain account; CI supplies the private
 key to Sparkle tools over stdin, never in command arguments, files or logs.
@@ -140,16 +148,52 @@ Never regenerate an existing app's key. Keep a protected backup outside source a
 build artifacts. Routine releases on another Mac need GitHub access, not copied
 publication credentials.
 
-## Installation and Developer ID
+## Installation and persistent signing
 
-Open the DMG, drag the app to Applications or a writable per-user Applications
-folder, eject the image and launch the installed copy. Current builds are ad hoc
-signed and not notarized; first downloaded launch may require **System Settings →
-Privacy & Security → Open Anyway**. Sparkle defaults to four-hour checks while the
-app runs, with saved preferences respected; installation can wait for quit or
-permission. The running app displays its own bundle version.
+Open the DMG, drag the app to Applications or a writable per-user location, eject
+the image and launch the installed copy. From **0.6.8**, the app and every updater
+executable use the same dedicated self-signed certificate. The public DER is
+`Resources/ReleaseSigning.cer`, pinned by `codeSigningCertificateSHA256` in
+`release.json`. This certificate and private key are distinct from Awake's and
+from the unchanged Sparkle update key. Keep the bundle ID and exact certificate
+stable; generating another certificate with the same name changes identity.
 
-Later, import the Developer ID identity into the CI signing keychain and set
-`DISPLAY_DIALS_SIGN_IDENTITY`. Notarize and staple after building and before DMG
-packaging/update signing. Preserve bundle ID, update key, URLs and increasing
-versions; test an update from an ad hoc release before publishing the transition.
+`scripts/signing.py` imports the encrypted PKCS#12 identity into a disposable CI
+keychain. The keychain temporarily joins the certificate-chain search path during
+signing; the original list is restored on success or failure. A preflight verifies
+private-key access before compilation. Neither users nor CI install a trusted
+root or reduce macOS security protections. PR builds have no signing secrets.
+The encrypted identity has an owner-only backup outside source; never regenerate
+it, print private material or commit it during routine builds.
+
+Release build/package checks verify the pinned certificate, certificate-bound
+designated requirement and bundle identifier for the app and updater components,
+including the finished DMG. Missing secrets, an ad hoc fallback, a different
+certificate or an identifier-only requirement block publication. The app remains
+not Developer ID signed or notarized; first downloaded launch may require
+**System Settings → Privacy & Security → Open Anyway**. Sparkle defaults to
+four-hour checks while running and respects saved update preferences.
+
+Display Dials does not request Accessibility, Input Monitoring or Screen Recording.
+Do not add those permissions as a signing workaround or claim their persistence
+was tested. Night Shift uses CoreBrightness and startup uses optional
+`SMAppService.mainApp` registration. During a legacy identity transition, handle
+any native login-item approval through the existing Login Items UI; do not
+silently register, disable or re-enable the service. A later certificate or
+Developer ID migration must be planned and tested explicitly.
+
+## Live update continuity checks
+
+Use `--status` to query an already running 0.6.8-or-later app. It reports the app's
+own version/build, Night Shift support/state, native login-item state and updater
+preferences without starting another app, changing Night Shift or collecting
+statistics. A diagnostic executable launched by a trusted development tool is
+not evidence about another app process's permissions.
+
+Compare two different executable builds signed with this certificate at the same
+writable installation path. Preserve the current Night Shift settings and login
+choice. Exercise the real Sparkle download/install flow, then confirm the exact
+public executable is running, Night Shift remains available and native login-item
+status has not changed. Do not enable launch at login merely to manufacture a
+grant test. If no privacy grant exists, record that fact rather than claiming a
+TCC permission test passed.

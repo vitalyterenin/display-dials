@@ -61,6 +61,8 @@ statistics must never affect Night Shift controls or updating.
 The local consent choice and, only after opt-in, random installation ID are saved
 in app preferences. The ordinary updater operates independently of this choice.
 Diagnostics, smoke checks and raw SwiftPM executable runs cannot send statistics.
+The local read-only `--status` query does not record or transmit usage events;
+it reports only app version, Night Shift, login-item and update-preference state.
 Automated tests use isolated preferences and a capturing transport, not the service.
 
 The developer uses a free plan. Event quotas and the accessible reporting window

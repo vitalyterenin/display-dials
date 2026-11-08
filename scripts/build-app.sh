@@ -51,15 +51,7 @@ iconutil --convert icns "$iconset" --output "$app_dir/Contents/Resources/AppIcon
 # Finder / file providers may add this attribute to an existing generated bundle.
 # Remove only Finder metadata; do not remove quarantine or other security metadata.
 xattr -dr com.apple.FinderInfo "$app_dir" 2>/dev/null || true
-# Developer ID can later replace ad hoc signing in this build stage.
-identity="${DISPLAY_DIALS_SIGN_IDENTITY:--}"
-sign_args=(--force --sign "$identity")
-if [[ "$identity" != - ]]; then sign_args+=(--options runtime --timestamp); fi
-codesign "${sign_args[@]}" "$sparkle/Versions/B/Autoupdate"
-codesign "${sign_args[@]}" "$sparkle/Versions/B/Updater.app"
-codesign "${sign_args[@]}" "$sparkle"
-codesign "${sign_args[@]}" "$app_dir"
-codesign --verify --deep --strict "$app_dir"
+python3 scripts/signing.py sign --app "$app_dir"
 destination="$output_dir/Display Dials.app"
 if [[ -e "$destination" ]]; then rm -rf "$destination"; fi
 mv "$app_dir" "$destination"
