@@ -31,7 +31,7 @@ application reopen shows it; automatic launch at login stays quietly in the menu
 - **Status:** `On · …%`, `Off`, `Unavailable`, or an error. The percentage is the
   system's normalized warmth, not calibrated kelvin or a brightness measurement.
 - **More options (…):** installed version, Launch at Login, update commands and
-  preferences, Usage Statistics, and Quit. The version row is informational.
+  preferences, and Quit. The version row is informational.
 
 The slider remains usable when Night Shift is off. It is disabled only when the
 system API or Night Shift is unavailable. Hover over the status for details.
@@ -65,8 +65,7 @@ Sparkle checks the [signed stable feed](https://vitalyterenin.github.io/display-
 on a four-hour schedule while the app runs. Installation can wait for quit or
 permission. One signed DMG serves manual downloads and updates; there is one stable
 channel and only the current DMG is retained. GitHub Releases hosts the download;
-GitHub Pages hosts the signed feed. Update traffic is independent of usage
-statistics and Sparkle system profiling is disabled.
+GitHub Pages hosts the signed feed. Sparkle system profiling is disabled.
 
 From **0.6.8**, the app and updater keep the same certificate-bound signing
 identity across releases. Users do not install or trust a certificate. Display
@@ -86,17 +85,11 @@ Quitting or removing the app leaves the current Night Shift settings in place.
 To turn Night Shift off first, move the slider fully left before quitting.
 Its macOS schedule remains active.
 
-## Optional usage statistics
+## Privacy
 
-The first interactive launch/opening asks whether to share minimal usage events
-through TelemetryDeck. Nothing is collected or sent before consent, and every app
-feature works after declining. Closing the first prompt counts as declining.
-A quiet login launch defers an undecided prompt until the panel is opened manually.
-
-Change the choice in **More options (…) > Usage Statistics…**. Disabling clears
-unsent events, cancels requests where possible and resets the random local
-identifier; it cannot recall data already received by the service. See the
-[complete event and storage disclosure](docs/privacy.md).
+Display Dials does not collect or send usage statistics. There is no statistics
+prompt or analytics transport. See [privacy and network activity](docs/privacy.md)
+for details about update requests.
 
 ## Troubleshooting and diagnostics
 
@@ -121,8 +114,8 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 login-item and update state. It does not launch the app. Other diagnostic commands
 run in the caller's context.
 
-These modes do not change Night Shift, start the updater, register login items or
-send statistics. Snapshot writing is best-effort; check that the file exists.
+These modes do not change Night Shift, start the updater or register login items.
+Snapshot writing is best-effort; check that the file exists.
 
 Maintained by Vitaly Terenin. Report issues through
 [this repository's issue tracker](https://github.com/vitalyterenin/display-dials/issues),
@@ -148,7 +141,7 @@ output bundle. Override locations with `DISPLAY_DIALS_OUTPUT_DIR` and
 - [Implementation, test coverage and historical performance samples](docs/implementation.md)
 - [Refactoring findings, implemented changes and validation (2026-11-08)](docs/refactoring-review.md)
 - [Release operations and persistent signing](docs/releases.md)
-- [Usage statistics and privacy](docs/privacy.md)
+- [Privacy and network activity](docs/privacy.md)
 
 ## License
 

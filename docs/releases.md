@@ -199,8 +199,7 @@ Developer ID migration must be planned and tested explicitly.
 
 Use `--status` to query an already running 0.6.8-or-later app. It reports the app's
 own version/build, Night Shift support/state, native login-item state and updater
-preferences without starting another app, changing Night Shift or collecting
-statistics. A diagnostic executable launched by a trusted development tool is
+preferences without starting another app or changing Night Shift. A diagnostic executable launched by a trusted development tool is
 not evidence about another app process's permissions.
 
 Compare two different executable builds signed with this certificate at the same

@@ -1,5 +1,4 @@
 import AppKit
-import UsageTelemetry
 
 @MainActor
 final class PanelController: NSViewController {
@@ -7,18 +6,7 @@ final class PanelController: NSViewController {
     let warmth: any NightShiftControlling
     let updates = UpdateController()
     let loginItem = LoginItemController()
-    private(set) lazy var telemetry = UsageTelemetry(
-        appID: Bundle.main.object(forInfoDictionaryKey: "TelemetryDeckAppID") as? String,
-        version: AppIdentity.version,
-        build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Development",
-        runtimeAllowed: Bundle.main.bundleURL.pathExtension == "app"
-            && !CommandLine.arguments.contains("--smoke-test")
-            && !CommandLine.arguments.contains("--diagnostics"),
-        makeTransport: { TelemetryDeckTransport() }
-    )
-    private var statisticsPreferences: StatisticsPreferences?
     let warmthSlider = WarmthSlider(frame: .zero)
-    private var pendingWarmthEvent: UsageEvent?
     let statusLabel = NSTextField(labelWithString: "")
     private var settingError: String?
     private var timer: Timer?
@@ -32,10 +20,9 @@ final class PanelController: NSViewController {
         let error: String?
     }
 
-    init(warmth: any NightShiftControlling = NightShiftClient(), telemetry: UsageTelemetry? = nil) {
+    init(warmth: any NightShiftControlling = NightShiftClient()) {
         self.warmth = warmth
         super.init(nibName: nil, bundle: nil)
-        if let telemetry { self.telemetry = telemetry }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -74,8 +61,6 @@ final class PanelController: NSViewController {
         warmthSlider.action = #selector(changeWarmth)
         warmthSlider.onDragEnded = { [weak self] in
             guard let self else { return }
-            if let event = self.pendingWarmthEvent { self.telemetry.record(event) }
-            self.pendingWarmthEvent = nil
             self.lastState = nil
             self.refresh()
         }
@@ -195,9 +180,6 @@ final class PanelController: NSViewController {
         automaticInstallation.isEnabled = updates.isConfigured && updates.automaticallyChecks
         automaticInstallation.state = updates.automaticallyInstalls ? .on : .off
         menu.addItem(.separator())
-        let statistics = menu.addItem(withTitle: "Usage Statistics…", action: #selector(showStatistics), keyEquivalent: "")
-        statistics.target = self
-        menu.addItem(.separator())
         let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         OptionsMenuPresentation.popUp(menu, from: sender)
@@ -232,28 +214,15 @@ final class PanelController: NSViewController {
     @objc private func openLoginItemSettings() { loginItem.openSettings() }
 
     @objc private func checkForUpdates(_ sender: Any?) {
-        if updates.canCheck { telemetry.record(.manualUpdateCheck) }
         updates.check(sender)
     }
 
     @objc private func changeAutomaticChecks(_ sender: NSMenuItem) {
         updates.setAutomaticChecks(sender.state != .on)
-        recordUpdatePreferences()
     }
 
     @objc private func changeAutomaticInstallation(_ sender: NSMenuItem) {
         updates.setAutomaticInstallation(sender.state != .on)
-        recordUpdatePreferences()
-    }
-
-    func recordUpdatePreferences() {
-        telemetry.record(.updatePreferences(checks: updates.automaticallyChecks, installation: updates.automaticallyInstalls))
-    }
-
-    @objc func showStatistics() {
-        if let existing = statisticsPreferences, existing.window?.isVisible == true { existing.present(); return }
-        statisticsPreferences = StatisticsPreferences(telemetry: telemetry) { [weak self] in self?.recordUpdatePreferences() }
-        statisticsPreferences?.present()
     }
 
     @objc private func changeWarmth() {
@@ -264,12 +233,6 @@ final class PanelController: NSViewController {
             setStrength: { self.warmth.changeStrength($0) },
             setEnabled: { self.warmth.changeEnabled($0) }
         )
-        let event = UsageEvent.warmthChanged(position: Int((strength * 9).rounded()) + 1, succeeded: success)
-        if warmthSlider.isDragging {
-            pendingWarmthEvent = event
-        } else {
-            telemetry.record(event)
-        }
         report(success)
     }
 

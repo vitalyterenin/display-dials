@@ -14,8 +14,6 @@
 | `Sources/DisplayDials/WarmthSlider.swift` | Continuous native slider, tick deduplication and drag completion |
 | `Sources/DisplayDials/OptionsMenuPresentation.swift` | Screen-coordinate menu anchor, independent of popover bounds |
 | `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
-| `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
-| `Sources/UsageTelemetry/` | Consent gate, typed events, memory-only batches and TelemetryDeck transport |
 | `Resources/AppIcon.png` | Approved transparent application icon; build generates all standard and Retina ICNS sizes |
 | `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
 | `release.json` | Version, increasing build number, feed/download URLs, application ID, and public update key |
@@ -36,25 +34,22 @@ The executable entry point handles `--status` first, then `--diagnostics`, then
 the AppKit application path (including `--smoke-test`). `AppDelegate` owns the
 status item, transient popover and status responder. The popover owns its
 `PanelController`; that controller owns the Night Shift client, updater, login-item
-adapter, statistics window, telemetry gate and visible-panel timer. These Swift
-controllers run on the main actor. The Objective-C bridge separately rejects
-invocations off the main thread.
+adapter and visible-panel timer. These Swift controllers run on the main actor.
+The Objective-C bridge separately rejects invocations off the main thread.
 
 The main control flow is:
 
 ```text
 Menu bar / reopen / interactive launch
   -> AppDelegate.showPanel
-     -> undecided consent: StatisticsPreferences
-     -> otherwise: NSPopover -> PanelController.refresh -> DDWarmthClient
+     -> NSPopover -> PanelController.refresh -> DDWarmthClient
 
 Native slider action
   -> PanelController.changeWarmth -> fresh availability read
      -> WarmthAdjustment.apply -> DDWarmthClient writes
      -> report -> fresh read -> label and knob reconciliation
-     -> consent-gated event (deferred until completion for a drag)
 
-More options -> UpdateController / LoginItemController / StatisticsPreferences
+More options -> UpdateController / LoginItemController
 --status -> distributed notification -> running app snapshot -> JSON response
 ```
 
@@ -63,10 +58,9 @@ and duplicate-tick suppression. Neither owns system state. `DDWarmthClient` retu
 an optional dictionary of numeric values. `NightShiftClient` validates and converts
 it into `NightShiftState`, then captures the bridge's support and diagnostic
 properties after the read. `NightShiftSnapshot` carries these values together.
-`PanelController` accepts `NightShiftControlling` and optional telemetry in its
-initializer; normal construction uses the real bridge and consent gate. Controller
-tests use a fake system client and capturing transport to exercise the complete
-read/action/reconciliation path without changing macOS settings.
+`PanelController` accepts `NightShiftControlling` in its initializer; normal
+construction uses the real bridge. Controller tests use a fake system client to
+exercise the complete read/action/reconciliation path without changing macOS settings.
 
 ### State and compatibility contracts
 
@@ -74,17 +68,9 @@ read/action/reconciliation path without changing macOS settings.
 | --- | --- | --- |
 | Enabled, active, strength and schedule | macOS, beyond the app process | Reads never write; Off preserves remembered strength; the app does not own the schedule |
 | Last rendered state and setting error | `PanelController`, process lifetime | Refresh skips identical UI state; every attempted write invalidates that cache; only a successful later action clears a setting error |
-| Drag deduplication and final event | `WarmthSlider` and `PanelController`, one gesture | Live changed ticks apply immediately; at most one final telemetry event; completion forces reconciliation |
-| Statistics consent | `usageStatisticsConsentV1` in app `UserDefaults` | Missing means undecided, false means declined; no transport before opt-in |
-| Statistics identity | `usageStatisticsInstallationID` in app `UserDefaults` | Created on the first allowed event; opt-out deletes it; re-enabling creates a new identity |
-| Statistics batch/session | `UsageTelemetry`, process memory | At most 50 pending events, oldest evicted at capacity; session UUID resets on opt-out; exit loses pending events |
+| Drag deduplication and reconciliation | `WarmthSlider` and `PanelController`, one gesture | Live changed ticks apply immediately; completion forces reconciliation |
 | Login registration | `SMAppService.mainApp` | No duplicate app preference; read OS status each time; change only on explicit menu action |
 | Automatic update choices | Sparkle preferences | Generated bundle defaults apply only when no saved user choice overrides them |
-
-The current `firstChoice` statistics window closes after Allow, Don't Send or its
-close button. It does not automatically resume the deferred panel opening; the
-next menu-bar click or reopen shows the panel after the choice has been saved.
-This describes current behavior, not a new onboarding requirement.
 
 For baseline findings, implemented changes and validation evidence, see the
 [2026-11-08 refactoring review](refactoring-review.md).
@@ -94,8 +80,7 @@ For baseline findings, implemented changes and validation evidence, see the
 `AppDelegate` creates an accessory application with a menu bar item and no Dock
 window. Its template SF Symbol is `sun.max`. A transient `NSPopover` contains the
 288 × 116 point panel, which opens on interactive launch and when the menu bar item is clicked.
-Login launches stay quiet; an undecided statistics prompt appears on the first
-manual opening instead of the panel.
+Login launches stay quiet. The first manual opening shows the panel directly.
 Reopening the application also shows the panel if it is hidden.
 
 `PanelController` uses native `NSSlider`, `NSButton`, `NSTextField`, and
@@ -109,9 +94,8 @@ tick applies it again. If an external enabled state snaps visually to zero,
 the first explicit Off action is delivered even though the knob is already there.
 Later duplicate events in that gesture are suppressed. A failed disable can be
 retried with another Off gesture. System reads do not reposition the knob during tracking.
-After tracking ends, the slider reconciles with the system and the final requested
-position/success is recorded once through the existing consent gate. Keyboard and
-accessibility changes apply immediately and record their individual actions. The displayed percentage
+After tracking ends, the slider reconciles with the system. Keyboard and
+accessibility changes apply immediately. The displayed percentage
 uses the system strength; reading an intermediate value does not write a rounded
 value back to macOS.
 
@@ -122,8 +106,7 @@ More options opens a native `NSMenu`, populated from the running state each time
 3. Check for Updates…
 4. Check for Updates Automatically.
 5. Install Updates Automatically.
-6. Usage Statistics…
-7. Quit Display Dials.
+6. Quit Display Dials.
 
 `OptionsMenuPresentation` converts the button's bounds through window coordinates
 to a screen point and opens the menu with `in: nil`. This disconnects menu sizing
@@ -189,9 +172,6 @@ The app has no continuous animation/rendering loop, sleep-prevention assertion,
 or explicit App Nap opt-out. Sparkle's scheduler is independent of the panel timer;
 update checking, downloading and installation can temporarily use resources.
 Timer policy follows [Apple's energy-efficiency guidance](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/Timers.html).
-Opted-in usage statistics use a separate one-shot batching timer only after events;
-they add no continuous polling or session-duration timer. The measurements below
-predate this integration.
 
 ### Local review, 2026-11-07
 
@@ -262,12 +242,11 @@ unregistration disables the menu action until it finishes. The current app keeps
 running when its login registration is removed.
 
 The change action is disabled outside an app bundle, on a read-only volume, and
-in diagnostic/smoke modes. No login-item setting is sent to telemetry.
+in diagnostic/smoke modes.
 
 During `applicationDidFinishLaunching`, the Apple open-application event is checked
-for `keyAELaunchedAsLogInItem`. An automatic login launch initializes the menu bar,
-updater and consent-gated telemetry but does not show the panel or consent window.
-An undecided user sees the consent window on their first manual opening instead.
+for `keyAELaunchedAsLogInItem`. An automatic login launch initializes the menu bar
+and updater but does not show the panel.
 Normal launches and application reopen events still show the app's interface.
 
 Local validation of the ad hoc signed build successfully registered it as an
@@ -286,19 +265,18 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 "$app_binary" --smoke-test --snapshot /tmp/display-dials-panel.png
 ```
 
-`test.sh` builds a debug executable, runs the consent/payload tests and
-`DisplayDialsTests`, prints Night Shift diagnostics and initializes the UI, then
-exercises native menu geometry, live slider tracking and the isolated Off/on
-write-order helper. These checks do not write Night Shift, register login items, start the
-updater or send statistics. Menu geometry tests briefly open their own popover/menu.
-The build script creates
-and signs the release bundle and verifies its code signature.
+`test.sh` builds a debug executable, runs `DisplayDialsTests`, prints Night Shift
+diagnostics and initializes the UI, then exercises native menu geometry, live
+slider tracking and the isolated Off/on write-order helper. These checks do not
+write Night Shift, register login items or start the updater. Menu geometry tests
+briefly open their own popover/menu. The build script creates and signs the
+release bundle and verifies its code signature.
 
 `--status` queries the already running app through local distributed notifications,
 reporting its own version/build, Night Shift availability/state, native login-item
-status and update preferences. It does not start another UI, change settings or
-record a telemetry event. A two-second timeout reports that no compatible app is
-running. This avoids mistaking a trusted diagnostic caller's context for the app's.
+status and update preferences. It does not start another UI or change settings.
+A two-second timeout reports that no compatible app is running. This avoids
+mistaking a trusted diagnostic caller's context for the app's.
 
 Requests and replies use `com.vitalyterenin.displaydials.status.request` and
 `.status.reply` notification names with a per-query UUID as the notification
@@ -365,9 +343,9 @@ writes, not a claim of compatibility with every macOS/display configuration.
 point. `PanelControllerTests` uses the real panel/slider, a synthetic tracking cell
 and a fake Night Shift client. It verifies external near-zero Off, unchanged
 disabled gestures, tick deduplication and reversal, failed writes and recovery,
-deferred knob reconciliation, final successful/failed drag telemetry and immediate
-non-drag actions. Synthetic mouse coordinates are converted from the slider into
-window coordinates, and the cell preserves the controller's action/target.
+deferred knob reconciliation and immediate non-drag actions. Synthetic mouse
+coordinates are converted from the slider into window coordinates, and the cell
+preserves the controller's action/target.
 Non-drag tests call `sendAction`; they do not simulate physical keyboard or
 accessibility input. A real run-loop check verifies that repeated appearances
 install one polling timer and disappearance stops reads.
@@ -377,21 +355,10 @@ and exercises ordinary failures, invalid numbers, unavailable state and recovery
 It verifies post-read metadata and the existing state JSON representation. These
 tests do not establish private CoreBrightness compatibility on other macOS versions.
 
-## Optional statistics
+## Privacy
 
-`UsageTelemetry` is a main-actor consent gate. Its transport is not even created
-until consent is saved and a batch is ready. The executable enables the gate only
-inside a configured app bundle during normal launches, not diagnostic or smoke runs.
-`StatisticsPreferences` explains the collected fields before opt-in and exposes
-the same choice through More options. Closing the first prompt saves a refusal.
-
-The implementation uses the official HTTPS Ingest API v2 without importing the
-TelemetryDeck SDK. Events are a typed enum with fixed parameters; no general-purpose
-string/error collector is exposed. A maximum of 50 events stays in memory for an
-approximately one-minute batch; no events are saved to disk or retried.
-Disabling cancels the timer and transport and resets the installation ID.
-See the [data disclosure](privacy.md) for event names, payloads and vendor storage limits.
-
-The app privacy manifest conservatively declares interaction data linked to a
-random installation identifier for analytics, without advertising tracking.
-This is not an App Store eligibility assessment; the app still uses private APIs.
+The app collects no usage statistics. The former event module, transport and
+statistics window have been removed, along with their package targets and bundle
+configuration. The privacy manifest declares no collected data or tracking and
+retains the UserDefaults API declaration for local preferences. Sparkle system
+profiling remains disabled. See [privacy and network activity](privacy.md).

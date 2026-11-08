@@ -1,5 +1,10 @@
 # Refactoring review and implementation — 2026-11-08
 
+> Historical review of the earlier implementation. Version 0.6.10 removes usage
+> telemetry, its consent window, event tests and build configuration. References to those components and test counts below describe
+> the reviewed baseline. Current behavior is documented in `implementation.md`
+> and `privacy.md`.
+
 ## Result and baseline
 
 R1–R4 from the prepared audit are implemented and locally verified. The changes

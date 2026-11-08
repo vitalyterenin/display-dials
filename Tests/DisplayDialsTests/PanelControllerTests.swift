@@ -1,6 +1,5 @@
 import AppKit
 import Testing
-import UsageTelemetry
 @testable import DisplayDials
 
 @MainActor
@@ -54,19 +53,12 @@ private final class TrackingCell: NSSliderCell {
     }
 }
 
-@MainActor
-private final class CaptureTransport: UsageTransport {
-    var bodies: [Data] = []
-    func send(_ body: Data) { bodies.append(body) }
-    func cancel() {}
-}
-
 @Suite(.serialized)
 @MainActor
 struct PanelControllerTests {
-    private func panel(_ client: FakeNightShift, telemetry: UsageTelemetry? = nil) -> PanelController {
+    private func panel(_ client: FakeNightShift) -> PanelController {
         _ = NSApplication.shared
-        let panel = PanelController(warmth: client, telemetry: telemetry)
+        let panel = PanelController(warmth: client)
         _ = panel.view
         panel.view.layoutSubtreeIfNeeded()
         return panel
@@ -197,45 +189,6 @@ struct PanelControllerTests {
         action(panel, value: 0)
         #expect(client.writes == ["disable"])
         #expect(panel.statusLabel.stringValue == "Off")
-    }
-
-    @Test func dragRecordsOnlyFinalResultAndNonDragRecordsImmediately() throws {
-        let suite = "DisplayDials.PanelTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let transport = CaptureTransport()
-        let telemetry = UsageTelemetry(appID: UUID().uuidString, version: "test", build: "1",
-                                       defaults: defaults, makeTransport: { transport })
-        telemetry.start()
-        telemetry.setEnabled(true)
-        defer { telemetry.setEnabled(false) }
-        telemetry.flush()
-        transport.bodies.removeAll()
-        let client = FakeNightShift(enabled: false, strength: 0.8)
-        let panel = panel(client, telemetry: telemetry)
-        drag(panel, values: [1.0 / 9, 2.0 / 9, 2.0 / 9, 1.0 / 9])
-        telemetry.flush()
-        try #require(transport.bodies.count == 1)
-        let batch = try #require(JSONSerialization.jsonObject(with: transport.bodies[0]) as? [[String: Any]])
-        #expect(batch.count == 1)
-        #expect(batch[0]["type"] as? String == "Warmth.changed")
-        let payload = try #require(batch[0]["payload"] as? [String: String])
-        #expect(payload["position"] == "2" && payload["succeeded"] == "true")
-        client.failEnabled = true
-        action(panel, value: 0)
-        telemetry.flush()
-        try #require(transport.bodies.count == 2)
-        let failed = try #require(JSONSerialization.jsonObject(with: transport.bodies[1]) as? [[String: Any]])
-        #expect(failed.count == 1)
-        let failure = try #require(failed[0]["payload"] as? [String: String])
-        #expect(failure["position"] == "1" && failure["succeeded"] == "false")
-        drag(panel, values: [0, 0, 0])
-        telemetry.flush()
-        try #require(transport.bodies.count == 3)
-        let failedDrag = try #require(JSONSerialization.jsonObject(with: transport.bodies[2]) as? [[String: Any]])
-        #expect(failedDrag.count == 1)
-        let finalFailure = try #require(failedDrag[0]["payload"] as? [String: String])
-        #expect(finalFailure["position"] == "1" && finalFailure["succeeded"] == "false")
     }
 
     @Test func pollingRunsOnlyWhileVisibleWithoutDuplicateTimers() {

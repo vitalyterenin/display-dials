@@ -1,5 +1,4 @@
 import AppKit
-import UsageTelemetry
 
 enum AppIdentity {
     static let name = "Display Dials"
@@ -64,31 +63,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ]
             }
             controller.updates.start()
-            controller.telemetry.start()
-            controller.recordUpdatePreferences()
-            if !launchedAtLogin { showPanel(source: .launch) }
+            if !launchedAtLogin { showPanel() }
         }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !popover.isShown { showPanel(source: .reopen) }
+        if !popover.isShown { showPanel() }
         return false
     }
 
     @objc private func togglePanel() {
         if popover.isShown { popover.performClose(nil) }
-        else { showPanel(source: .menuBar) }
+        else { showPanel() }
     }
 
-    private func showPanel(source: UsageEvent.PanelSource) {
+    private func showPanel() {
         guard let button = status.button else { return }
-        if let controller = popover.contentViewController as? PanelController,
-           controller.telemetry.isConfigured && !controller.telemetry.hasChosen {
-            controller.showStatistics()
-            return
-        }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        (popover.contentViewController as? PanelController)?.telemetry.record(.panelOpened(source))
         NSApp.activate(ignoringOtherApps: true)
     }
 }
