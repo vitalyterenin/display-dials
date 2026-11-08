@@ -2,6 +2,8 @@
 
 Write all application interface text, project documentation, code comments, and docstrings in English.
 Apply this rule when creating or updating any file in this repository.
+Write GitHub descriptions, commits, PRs and release notes in English as well.
+Describe functions, requirements and usage concisely, without advertising or slogans.
 
 # Options menu layout
 

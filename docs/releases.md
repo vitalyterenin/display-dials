@@ -81,6 +81,11 @@ assigned on this bucket, rather than granting access across the cloud folder.
 3. Run validation and local checks, then commit/push and merge the checked revision.
 4. Push a new tag equal to `v` plus the configured version.
 5. Wait for **Release Display Dials** to finish both build and publish jobs.
+6. Verify the public signed feed and DMG, then review the app's
+   [Apps catalog card](https://teren.in/apps/) using the shared
+   [catalog workflow](https://github.com/vitalyterenin/app-release-kit/blob/main/skills/app-release/references/catalog.md).
+   Commit and deploy changed facts through the separate website repository and
+   verify the live page and download. An accurate card needs no cosmetic edit.
 
 For example, after committing and pushing the intended source revision:
 
