@@ -7,7 +7,7 @@ Move fully left to turn it off; move right to turn it on and adjust its warmth.
 
 ## Install
 
-[Download DisplayDials.dmg](https://teren.in/apps/DisplayDials.dmg)
+[Download DisplayDials.dmg](https://github.com/vitalyterenin/display-dials/releases/latest/download/DisplayDials.dmg)
 
 Requires an **Apple Silicon Mac with macOS 13 or later** and available Night Shift
 support. The permanent download always contains the current release.
@@ -61,10 +61,11 @@ installation default to enabled; saved user choices take precedence. Both can be
 changed in More options. Installation is disabled there while automatic checks
 are off.
 
-Sparkle checks the [signed stable feed](https://teren.in/apps/feeds/display-dials.xml)
+Sparkle checks the [signed stable feed](https://vitalyterenin.github.io/display-dials/appcast.xml)
 on a four-hour schedule while the app runs. Installation can wait for quit or
 permission. One signed DMG serves manual downloads and updates; there is one stable
-channel and no public historical downloads. Update traffic is independent of usage
+channel and only the current DMG is retained. GitHub Releases hosts the download;
+GitHub Pages hosts the signed feed. Update traffic is independent of usage
 statistics and Sparkle system profiling is disabled.
 
 The app displays its running bundle version. Source metadata in
@@ -103,10 +104,10 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 These modes do not change Night Shift, start the updater, register login items or
 send statistics. Snapshot writing is best-effort; check that the file exists.
 
-Maintained by Vitaly Terenin. Repository collaborators can report issues through
+Maintained by Vitaly Terenin. Report issues through
 [this repository's issue tracker](https://github.com/vitalyterenin/display-dials/issues),
-including the app/macOS versions, reproduction steps and read-only diagnostics.
-The repository is private and currently declares no open-source license.
+with the app/macOS versions, reproduction steps and read-only diagnostics.
+The source is public; no open-source license has been assigned.
 
 ## Build and further documentation
 

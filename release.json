@@ -1,10 +1,15 @@
 {
-  "version": "0.6.5",
-  "build": "15",
+  "version": "0.6.6",
+  "build": "16",
   "id": "display-dials",
   "telemetryDeckAppID": "8DAED507-C688-4AAA-BBB6-1021563985A3",
-  "feedURL": "https://teren.in/apps/feeds/display-dials.xml",
-  "downloadURL": "https://teren.in/apps/DisplayDials.dmg",
-  "legacyFeedURLs": ["https://teren.in/updates/display-dials/appcast.xml"],
-  "publicEDKey": "vR8oWg0SSkNnKLEfRrI3Pwdo1JkbyvU1kkwYWEN29IQ="
+  "feedURL": "https://vitalyterenin.github.io/display-dials/appcast.xml",
+  "downloadURL": "https://github.com/vitalyterenin/display-dials/releases/latest/download/DisplayDials.dmg",
+  "legacyFeedURLs": [
+    "https://teren.in/apps/feeds/display-dials.xml",
+    "https://teren.in/updates/display-dials/appcast.xml"
+  ],
+  "publicEDKey": "vR8oWg0SSkNnKLEfRrI3Pwdo1JkbyvU1kkwYWEN29IQ=",
+  "githubRepository": "vitalyterenin/display-dials",
+  "name": "Display Dials"
 }
