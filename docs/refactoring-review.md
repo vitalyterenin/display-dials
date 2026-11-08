@@ -13,10 +13,12 @@ The original audit started from clean `main` at
 implementation began with only the audit's README/documentation changes present;
 those changes were preserved and updated here. The local implementation phase
 left version/build, dependencies, the installed app, Night Shift settings, login
-registration and publication state unchanged. This report records that validation
-phase; the release is prepared as 0.6.9/build 19. Publication and installation
-evidence belong to the release PR and GitHub Actions run, rather than the local
-development-build results below.
+registration and publication state unchanged. Version 0.6.9/build 19 was later
+published and installed through Sparkle; publication and installation evidence is
+recorded in [PR #24](https://github.com/vitalyterenin/display-dials/pull/24) and the
+[release workflow](https://github.com/vitalyterenin/display-dials/actions/runs/42501313399).
+The installed-app interaction checks below are separate from the local
+development-build results.
 
 ## Scope and architecture
 
@@ -204,6 +206,37 @@ successfully on this newer host. Independent Swift review found no production
 blocker; its test-scope comments were addressed by documenting non-drag dispatch
 and covering final failed-drag telemetry.
 
+## Installed-app interaction verification — 2026-11-08
+
+Tested the running, installed **0.6.9 (build 19)** on Apple Silicon, macOS 27.2,
+after the verified Sparkle update. The app's own `--status` confirmed version and
+system state. Changes were made through **System Settings → Displays → Night
+Shift** and the installed Display Dials panel, without substituting a development
+build or a fake Night Shift client.
+
+| Scenario | Observed result |
+| --- | --- |
+| Set system warmth to 0% while Night Shift is enabled | Panel showed `On · 0%` with the knob at the leftmost tick |
+| Click the leftmost knob once at enabled 0% | Panel changed to `Off`; the system switch turned off and `--status` reported `enabled: false` |
+| Set system warmth to 5% and enable Night Shift | Panel showed `On · 5%` while the knob remained at the leftmost tick |
+| Click the leftmost knob once at enabled 5% | Panel changed to `Off` and the system switch turned off, without first moving warmer |
+| Set system warmth to 50% and enable Night Shift | Panel showed `On · 50%`; the knob moved to its snapped visual tick (4/9), while `--status` still reported system strength `0.5` |
+| Switch Night Shift off in System Settings | Panel updated automatically to `Off` and moved the knob fully left |
+| Switch Night Shift back on in System Settings | Panel returned automatically to `On · 50%` and the same visual tick |
+| Restore system warmth to 100% | Panel returned to `On · 100%` with the knob fully right |
+
+External changes appeared on the panel's approximately five-second refresh cycle;
+this was a functional observation, not a latency benchmark. Display refresh did
+not round or write back the system's 50% strength. The real near-zero checks cover
+0% and 5%; the separate automated fixtures also cover 1% and failure/retry paths.
+
+The original state was restored: Night Shift enabled, active and available at
+strength `1`, with the unchanged custom schedule **06:00–05:59**. Final `--status`
+also confirmed launch at login enabled without approval required, and automatic
+update checks and installation enabled. No privacy permissions were requested or
+granted. These checks cover this host and its built-in display; they do not extend
+the older-macOS, multi-display or keyboard-input coverage.
+
 ## Limits and retained decisions
 
 During the local implementation phase, no real Night Shift writes, login/logout,
@@ -228,5 +261,5 @@ Two existing product behaviors remain: completing the first statistics prompt
 requires another click to open the panel, and an action-error label persists until
 a later successful action. `--status` still has no installation selector or
 authenticated responder identity; continuity checks should use one running copy.
-Release publication and minimum-platform validation are separate from this local
-implementation and verification.
+Release publication and installed-app checks are recorded separately above;
+minimum-platform validation remains outside this host's coverage.
