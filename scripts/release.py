@@ -14,7 +14,6 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 import xml.etree.ElementTree as ET
 from licenses import source_files, stage_distribution, verify_bundle, verify_distribution
 from signing import certificate, verify as verify_signing
@@ -43,7 +42,6 @@ def config():
         raise ValueError('Expected the permanent app-named GitHub Releases download')
     if data['feedURL'] != f'https://{owner.lower()}.github.io/{repo}/appcast.xml':
         raise ValueError('Expected this repository\'s GitHub Pages appcast')
-    uuid.UUID(data['telemetryDeckAppID'])
     source_files()
     certificate()
     return data
@@ -58,7 +56,6 @@ def write_plist(path):
         CFBundleShortVersionString=data['version'],
         CFBundleVersion=data['build'], LSMinimumSystemVersion='13.0',
         LSUIElement=True, NSHighResolutionCapable=True,
-        TelemetryDeckAppID=data['telemetryDeckAppID'],
         SUFeedURL=data['feedURL'], SUPublicEDKey=data['publicEDKey'],
         SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=True,
         SUScheduledCheckInterval=14400, SUEnableSystemProfiling=False,
@@ -120,7 +117,6 @@ def package(app, output, tools, previous):
     for key, expected in [('CFBundleVersion', data['build']),
                           ('CFBundleShortVersionString', data['version']),
                           ('SUPublicEDKey', data['publicEDKey']),
-                          ('TelemetryDeckAppID', data['telemetryDeckAppID']),
                           ('SUFeedURL', data['feedURL'])]:
         if plist.get(key) != expected:
             raise ValueError(f'Built app has unexpected {key}; rebuild it')
