@@ -31,7 +31,7 @@ xcrun swiftc Sources/DisplayDials/WarmthSlider.swift Tests/WarmthSliderTests.swi
     -o "$build_dir/warmth-slider-tests"
 "$build_dir/warmth-slider-tests"
 
-# Verify the integrated Off/on slider without writing real system settings.
+# Verify the isolated Off/on write-order helper without real system settings.
 xcrun swiftc Sources/DisplayDials/WarmthAdjustment.swift Tests/WarmthAdjustmentTests.swift \
     -o "$build_dir/warmth-adjustment-tests"
 "$build_dir/warmth-adjustment-tests"

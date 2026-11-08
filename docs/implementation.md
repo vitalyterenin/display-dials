@@ -4,12 +4,15 @@
 
 | File | Responsibility |
 | --- | --- |
-| `Sources/DisplayDials/main.swift` | Menu bar item, panel, More options menu, and diagnostic entry points |
+| `Sources/DisplayDials/main.swift` | Menu bar lifecycle, panel opening, and diagnostic entry points |
+| `Sources/DisplayDials/PanelController.swift` | Native panel, More options menu, action/readback coordination and visible-only polling |
+| `Sources/DisplayDials/NightShiftClient.swift` | Typed, injectable Night Shift interface and coherent post-read snapshots |
 | `Sources/NightShiftBridge/` | Objective-C adapter for the private Night Shift API |
 | `Sources/DisplayDials/RuntimeStatus.swift` | Read-only local queries of the running app’s own state |
 | `Sources/DisplayDials/UpdateController.swift` | Sparkle startup, availability, and preferences |
 | `Sources/DisplayDials/WarmthAdjustment.swift` | Off/on mapping, ordered setting writes and failure handling |
 | `Sources/DisplayDials/WarmthSlider.swift` | Continuous native slider, tick deduplication and drag completion |
+| `Sources/DisplayDials/OptionsMenuPresentation.swift` | Screen-coordinate menu anchor, independent of popover bounds |
 | `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
 | `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
 | `Sources/UsageTelemetry/` | Consent gate, typed events, memory-only batches and TelemetryDeck transport |
@@ -27,6 +30,65 @@ built by `build-app.sh` gets its version and build number from `release.json`.
 To rename the product, review `AppIdentity`, `Package.swift`, bundle metadata in
 `scripts/release.py`, and paths/names in the build and publication scripts.
 
+### Ownership and execution boundaries
+
+The executable entry point handles `--status` first, then `--diagnostics`, then
+the AppKit application path (including `--smoke-test`). `AppDelegate` owns the
+status item, transient popover and status responder. The popover owns its
+`PanelController`; that controller owns the Night Shift client, updater, login-item
+adapter, statistics window, telemetry gate and visible-panel timer. These Swift
+controllers run on the main actor. The Objective-C bridge separately rejects
+invocations off the main thread.
+
+The main control flow is:
+
+```text
+Menu bar / reopen / interactive launch
+  -> AppDelegate.showPanel
+     -> undecided consent: StatisticsPreferences
+     -> otherwise: NSPopover -> PanelController.refresh -> DDWarmthClient
+
+Native slider action
+  -> PanelController.changeWarmth -> fresh availability read
+     -> WarmthAdjustment.apply -> DDWarmthClient writes
+     -> report -> fresh read -> label and knob reconciliation
+     -> consent-gated event (deferred until completion for a drag)
+
+More options -> UpdateController / LoginItemController / StatisticsPreferences
+--status -> distributed notification -> running app snapshot -> JSON response
+```
+
+`WarmthAdjustment` owns write ordering, while `WarmthSlider` owns native tracking
+and duplicate-tick suppression. Neither owns system state. `DDWarmthClient` returns
+an optional dictionary of numeric values. `NightShiftClient` validates and converts
+it into `NightShiftState`, then captures the bridge's support and diagnostic
+properties after the read. `NightShiftSnapshot` carries these values together.
+`PanelController` accepts `NightShiftControlling` and optional telemetry in its
+initializer; normal construction uses the real bridge and consent gate. Controller
+tests use a fake system client and capturing transport to exercise the complete
+read/action/reconciliation path without changing macOS settings.
+
+### State and compatibility contracts
+
+| State | Owner and lifetime | Contract |
+| --- | --- | --- |
+| Enabled, active, strength and schedule | macOS, beyond the app process | Reads never write; Off preserves remembered strength; the app does not own the schedule |
+| Last rendered state and setting error | `PanelController`, process lifetime | Refresh skips identical UI state; every attempted write invalidates that cache; only a successful later action clears a setting error |
+| Drag deduplication and final event | `WarmthSlider` and `PanelController`, one gesture | Live changed ticks apply immediately; at most one final telemetry event; completion forces reconciliation |
+| Statistics consent | `usageStatisticsConsentV1` in app `UserDefaults` | Missing means undecided, false means declined; no transport before opt-in |
+| Statistics identity | `usageStatisticsInstallationID` in app `UserDefaults` | Created on the first allowed event; opt-out deletes it; re-enabling creates a new identity |
+| Statistics batch/session | `UsageTelemetry`, process memory | At most 50 pending events, oldest evicted at capacity; session UUID resets on opt-out; exit loses pending events |
+| Login registration | `SMAppService.mainApp` | No duplicate app preference; read OS status each time; change only on explicit menu action |
+| Automatic update choices | Sparkle preferences | Generated bundle defaults apply only when no saved user choice overrides them |
+
+The current `firstChoice` statistics window closes after Allow, Don't Send or its
+close button. It does not automatically resume the deferred panel opening; the
+next menu-bar click or reopen shows the panel after the choice has been saved.
+This describes current behavior, not a new onboarding requirement.
+
+For baseline findings, implemented changes and validation evidence, see the
+[2026-11-08 refactoring review](refactoring-review.md).
+
 ## Native interface
 
 `AppDelegate` creates an accessory application with a menu bar item and no Dock
@@ -43,7 +105,10 @@ no separate switch. The slider remains enabled while Night Shift is off, and is
 disabled only when the system is unavailable. It applies each new tick immediately
 while dragging. Repeated mouse events
 within the same tick are suppressed by `WarmthSlider`; returning to an earlier
-tick applies it again. System reads do not reposition the knob during tracking.
+tick applies it again. If an external enabled state snaps visually to zero,
+the first explicit Off action is delivered even though the knob is already there.
+Later duplicate events in that gesture are suppressed. A failed disable can be
+retried with another Off gesture. System reads do not reposition the knob during tracking.
 After tracking ends, the slider reconciles with the system and the final requested
 position/success is recorded once through the existing consent gate. Keyboard and
 accessibility changes apply immediately and record their individual actions. The displayed percentage
@@ -81,7 +146,19 @@ active state, and strength. The On/Off label reflects the enabled flag, not the
 separate active flag. When disabled, the slider reads zero even if macOS remembers
 a nonzero strength. Enabled external values are displayed without a setting write;
 an external enabled state with zero strength can therefore read On · 0%.
-Invalid responses or missing availability disable the slider.
+Invalid responses or missing availability disable the slider. Failed or invalid
+reads show a read-failure diagnostic while retaining structural API support;
+unsupported API failures retain the bridge's diagnostic. A valid state with
+`available=false` is reported as unavailable in the current display configuration.
+Both CLI paths use the same completed snapshot, preventing stale support metadata
+when the first read changes the bridge's support status. Existing JSON keys and
+empty-object representation for missing state are preserved.
+
+The native slider snaps its visual value to one of ten ticks even when the source
+strength lies between ticks. The percentage still uses the actual source value.
+An enabled strength at or near zero can therefore display the knob at Off;
+the status still shows On, and an explicit Off gesture disables it. Refreshing
+never changes the actual external strength to match a visual tick.
 
 `WarmthAdjustment` maps user-selected zero to `setEnabled(false)` without changing
 remembered strength. Positive values call `setStrength:commit:` first and enable
@@ -209,10 +286,10 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 "$app_binary" --smoke-test --snapshot /tmp/display-dials-panel.png
 ```
 
-`test.sh` builds a debug executable, runs the isolated consent/payload unit tests,
-prints Night Shift diagnostics and initializes the UI, then exercises native menu
-geometry, live slider tracking and integrated Off/on transitions in isolated test
-fixtures. These checks do not write Night Shift, register login items, start the
+`test.sh` builds a debug executable, runs the consent/payload tests and
+`DisplayDialsTests`, prints Night Shift diagnostics and initializes the UI, then
+exercises native menu geometry, live slider tracking and the isolated Off/on
+write-order helper. These checks do not write Night Shift, register login items, start the
 updater or send statistics. Menu geometry tests briefly open their own popover/menu.
 The build script creates
 and signs the release bundle and verifies its code signature.
@@ -222,6 +299,14 @@ reporting its own version/build, Night Shift availability/state, native login-it
 status and update preferences. It does not start another UI, change settings or
 record a telemetry event. A two-second timeout reports that no compatible app is
 running. This avoids mistaking a trusted diagnostic caller's context for the app's.
+
+Requests and replies use `com.vitalyterenin.displaydials.status.request` and
+`.status.reply` notification names with a per-query UUID as the notification
+object. The CLI removes its reply observer on return. The responder is installed
+once for the lifetime of the running app. There is no process selector or
+authenticated responder identity: if multiple copies run, a received reply is
+not guaranteed to identify a particular installation. Use a single running copy
+for continuity checks. This channel is diagnostic, not an authorization mechanism.
 
 `--diagnostics` emits JSON containing app name/version, Night Shift support,
 diagnostic text, and current state. `--smoke-test` initializes the panel and exits;
@@ -273,6 +358,24 @@ remembered strength, positive positions set strength before enabling, repeated O
 and already-enabled changes avoid redundant toggles, and failures/invalid values
 are handled without continuing an unsafe setting sequence. These are simulated
 writes, not a claim of compatibility with every macOS/display configuration.
+
+### Controller and snapshot regression checks
+
+`Tests/DisplayDialsTests` imports the executable module without invoking its entry
+point. `PanelControllerTests` uses the real panel/slider, a synthetic tracking cell
+and a fake Night Shift client. It verifies external near-zero Off, unchanged
+disabled gestures, tick deduplication and reversal, failed writes and recovery,
+deferred knob reconciliation, final successful/failed drag telemetry and immediate
+non-drag actions. Synthetic mouse coordinates are converted from the slider into
+window coordinates, and the cell preserves the controller's action/target.
+Non-drag tests call `sendAction`; they do not simulate physical keyboard or
+accessibility input. A real run-loop check verifies that repeated appearances
+install one polling timer and disappearance stops reads.
+
+`NightShiftClientTests` injects a bridge double whose first read changes support,
+and exercises ordinary failures, invalid numbers, unavailable state and recovery.
+It verifies post-read metadata and the existing state JSON representation. These
+tests do not establish private CoreBrightness compatibility on other macOS versions.
 
 ## Optional statistics
 

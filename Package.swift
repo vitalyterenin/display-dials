@@ -11,6 +11,7 @@ let package = Package(
     targets: [
         .target(name: "UsageTelemetry"),
         .testTarget(name: "UsageTelemetryTests", dependencies: ["UsageTelemetry"]),
+        .testTarget(name: "DisplayDialsTests", dependencies: ["DisplayDials", "NightShiftBridge"]),
         .target(name: "NightShiftBridge", publicHeadersPath: "include",
                 cSettings: [.unsafeFlags(["-fobjc-arc"])]),
         .executableTarget(name: "DisplayDials", dependencies: [

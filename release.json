@@ -1,6 +1,6 @@
 {
-  "version": "0.6.8",
-  "build": "18",
+  "version": "0.6.9",
+  "build": "19",
   "id": "display-dials",
   "telemetryDeckAppID": "8DAED507-C688-4AAA-BBB6-1021563985A3",
   "feedURL": "https://vitalyterenin.github.io/display-dials/appcast.xml",

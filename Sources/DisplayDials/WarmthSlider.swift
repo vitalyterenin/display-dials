@@ -4,6 +4,8 @@ import AppKit
 final class WarmthSlider: NSSlider {
     private(set) var isDragging = false
     var onDragEnded: (() -> Void)?
+    // The zero tick can represent an externally enabled, near-zero system strength.
+    var allowsInitialOffAction = false
     private var lastSentStrength: Double?
 
     override init(frame: NSRect) {
@@ -28,7 +30,7 @@ final class WarmthSlider: NSSlider {
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         isDragging = true
-        lastSentStrength = doubleValue
+        lastSentStrength = allowsInitialOffAction && doubleValue == 0 ? nil : doubleValue
         defer {
             isDragging = false
             lastSentStrength = nil

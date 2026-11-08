@@ -146,6 +146,7 @@ output bundle. Override locations with `DISPLAY_DIALS_OUTPUT_DIR` and
 `DISPLAY_DIALS_BUILD_DIR`.
 
 - [Implementation, test coverage and historical performance samples](docs/implementation.md)
+- [Refactoring findings, implemented changes and validation (2026-11-08)](docs/refactoring-review.md)
 - [Release operations and persistent signing](docs/releases.md)
 - [Usage statistics and privacy](docs/privacy.md)
 
