@@ -1,6 +1,6 @@
 # Display Dials
 
-A small macOS menu bar app for controlling Night Shift with one warmth slider.
+A macOS menu bar app for controlling Night Shift with one warmth slider.
 Move fully left to turn it off; move right to turn it on and adjust its warmth.
 
 ![Display Dials panel with a single slider from Off to Warmer and a More options button](docs/assets/panel.png)

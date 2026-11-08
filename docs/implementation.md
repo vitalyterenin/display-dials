@@ -267,8 +267,7 @@ inside a configured app bundle during normal launches, not diagnostic or smoke r
 the same choice through More options. Closing the first prompt saves a refusal.
 
 The implementation uses the official HTTPS Ingest API v2 without importing the
-TelemetryDeck SDK, which otherwise adds extensive default metadata and a repeating
-upload timer. Events are a typed enum with fixed parameters; no general-purpose
+TelemetryDeck SDK. Events are a typed enum with fixed parameters; no general-purpose
 string/error collector is exposed. A maximum of 50 events stays in memory for an
 approximately one-minute batch; no events are saved to disk or retried.
 Disabling cancels the timer and transport and resets the installation ID.
