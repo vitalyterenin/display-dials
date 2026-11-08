@@ -23,6 +23,15 @@ before publishing. Keep this app's implementation details in `docs/releases.md`.
 Publish the current DisplayDials.dmg through this repository's GitHub Releases and
 the signed appcast through its GitHub Pages deployment. Never add cloud storage keys.
 
+Release apps and updater executables must use the persistent certificate in
+Resources/ReleaseSigning.cer, pinned in release.json. Never regenerate it during
+builds, publish an ad hoc fallback, change the bundle ID or use an identifier-only
+requirement. Keep private signing material outside source and in encrypted repo
+Secrets. Do not alter system certificate trust or reuse another app's private key.
+Use --status for the installed app's own Night Shift and login-item context.
+Display Dials does not request Accessibility, Input Monitoring or Screen Recording;
+do not invent permission requests or claim those grants were tested.
+
 MIT is approved for this app. Preserve LICENSE and complete third-party notices
 in both the app bundle and DMG; use the build/package license checks before release.
 Do not change licensing or copyright notices by inference.

@@ -15,7 +15,7 @@ support. The permanent download always contains the current release.
 1. Open the DMG and drag **Display Dials.app** onto **Applications**.
 2. Eject the disk image and open the installed app. A writable location such as
    `~/Applications` also works.
-3. Current builds are ad hoc signed and not notarized. If macOS blocks the first
+3. Releases use a persistent self-signed certificate and are not notarized. If macOS blocks the first
    downloaded launch, use **System Settings > Privacy & Security > Open Anyway**.
 
 ## Use the slider
@@ -68,6 +68,11 @@ channel and only the current DMG is retained. GitHub Releases hosts the download
 GitHub Pages hosts the signed feed. Update traffic is independent of usage
 statistics and Sparkle system profiling is disabled.
 
+From **0.6.8**, the app and updater keep the same certificate-bound signing
+identity across releases. Users do not install or trust a certificate. Display
+Dials does not request Accessibility, Input Monitoring or Screen Recording;
+optional launch-at-login approval is managed by macOS as described above.
+
 The app displays its running bundle version. Source metadata in
 [release.json](release.json) does not prove that a release has been published.
 
@@ -107,9 +112,14 @@ After building, run these read-only checks from the repository root:
 ```sh
 app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials"
 "$app_binary" --diagnostics
+"$app_binary" --status
 "$app_binary" --smoke-test
 "$app_binary" --smoke-test --snapshot /tmp/display-dials-panel.png
 ```
+
+`--status` queries an already running 0.6.8-or-later app for its own Night Shift,
+login-item and update state. It does not launch the app. Other diagnostic commands
+run in the caller's context.
 
 These modes do not change Night Shift, start the updater, register login items or
 send statistics. Snapshot writing is best-effort; check that the file exists.
@@ -136,7 +146,7 @@ output bundle. Override locations with `DISPLAY_DIALS_OUTPUT_DIR` and
 `DISPLAY_DIALS_BUILD_DIR`.
 
 - [Implementation, test coverage and historical performance samples](docs/implementation.md)
-- [Release operations and future Developer ID integration](docs/releases.md)
+- [Release operations and persistent signing](docs/releases.md)
 - [Usage statistics and privacy](docs/privacy.md)
 
 ## License

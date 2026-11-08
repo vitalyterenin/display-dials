@@ -26,6 +26,12 @@ jobs:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
           python3 scripts/release.py validate
+      - name: Import persistent release signing identity
+        if: github.event_name != 'pull_request'
+        env:
+          DISPLAY_DIALS_SIGNING_P12: ${{ secrets.DISPLAY_DIALS_SIGNING_P12 }}
+          DISPLAY_DIALS_SIGNING_PASSWORD: ${{ secrets.DISPLAY_DIALS_SIGNING_PASSWORD }}
+        run: python3 scripts/signing.py import-ci --keychain "$RUNNER_TEMP/display-dials-release.keychain-db"
       - name: Test publication safety
         run: python3 -m unittest discover -s Tests -p 'test_*.py'
       - name: Run read-only diagnostics and UI smoke check
@@ -58,6 +64,12 @@ jobs:
           path: ${{ runner.temp }}/release/
           if-no-files-found: error
           retention-days: 14
+      - name: Remove temporary signing keychain
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          if [[ -f "$RUNNER_TEMP/display-dials-release.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/display-dials-release.keychain-db"
+          fi
 
   publish:
     if: github.ref_type == 'tag'

@@ -1,6 +1,6 @@
 {
-  "version": "0.6.7",
-  "build": "17",
+  "version": "0.6.8",
+  "build": "18",
   "id": "display-dials",
   "telemetryDeckAppID": "8DAED507-C688-4AAA-BBB6-1021563985A3",
   "feedURL": "https://vitalyterenin.github.io/display-dials/appcast.xml",
@@ -12,5 +12,6 @@
   "publicEDKey": "vR8oWg0SSkNnKLEfRrI3Pwdo1JkbyvU1kkwYWEN29IQ=",
   "githubRepository": "vitalyterenin/display-dials",
   "name": "Display Dials",
-  "license": "MIT"
+  "license": "MIT",
+  "codeSigningCertificateSHA256": "470be9815ce198ecc42531c36b9d538343db642b95e18ca266bc4f5e8aee72a5"
 }
