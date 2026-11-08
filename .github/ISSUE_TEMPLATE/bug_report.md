@@ -27,4 +27,3 @@ Include any status or error shown by the app.
 If available, paste the read-only `--diagnostics` output described in the
 [README](https://github.com/vitalyterenin/display-dials#troubleshooting-and-diagnostics).
 Review output and screenshots for personal information before posting.
-

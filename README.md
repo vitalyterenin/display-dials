@@ -145,4 +145,3 @@ Project code and assets are licensed under [MIT](LICENSE).
 Bundled components retain their [third-party licenses and notices](THIRD_PARTY_NOTICES.md).
 Both files are included in the DMG and in the installed app's
 `Contents/Resources/Licenses` directory, including automatic updates.
-
