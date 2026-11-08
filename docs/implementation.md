@@ -16,7 +16,8 @@
 | `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
 | `release.json` | Version, increasing build number, feed/download URLs, application ID, and public update key |
 | `scripts/release.py` | Bundle metadata, release validation, and signed archive/appcast preparation |
-| `scripts/build-app.sh` | Release build, bundled Sparkle framework, and code signing |
+| `scripts/build-app.sh` | Release build, bundled Sparkle framework, notices, and code signing |
+| `scripts/licenses.py` | Approved MIT terms, dependency notices and app/DMG license verification |
 
 `AppIdentity.version` reads `CFBundleShortVersionString` from the running bundle.
 An executable run directly from SwiftPM normally reports `Development`. A bundle
@@ -157,6 +158,8 @@ archive and appcast Ed25519 signatures, and uses one persistent update identity.
 Bundle settings require signed feeds with no expiration fallback and verification
 before extraction. System profiling is disabled, and optional sandbox XPC services
 are removed from the bundle. Application signing is currently ad hoc.
+The app bundle and DMG carry the project MIT license and complete third-party
+notices; build and packaging verify them before publication.
 
 See [release operations](releases.md) for the publication pipeline and the future
 Developer ID/notarization transition.

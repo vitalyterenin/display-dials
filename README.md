@@ -107,7 +107,6 @@ send statistics. Snapshot writing is best-effort; check that the file exists.
 Maintained by Vitaly Terenin. Report issues through
 [this repository's issue tracker](https://github.com/vitalyterenin/display-dials/issues),
 with the app/macOS versions, reproduction steps and read-only diagnostics.
-The source is public; no open-source license has been assigned.
 
 ## Build and further documentation
 
@@ -129,3 +128,10 @@ output bundle. Override locations with `DISPLAY_DIALS_OUTPUT_DIR` and
 - [Implementation, test coverage and historical performance samples](docs/implementation.md)
 - [Release operations and future Developer ID integration](docs/releases.md)
 - [Usage statistics and privacy](docs/privacy.md)
+
+## License
+
+Project code and assets are licensed under [MIT](LICENSE).
+Bundled components retain their [third-party licenses and notices](THIRD_PARTY_NOTICES.md).
+Both files are included in the DMG and in the installed app's
+`Contents/Resources/Licenses` directory, including automatic updates.

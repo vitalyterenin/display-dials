@@ -13,8 +13,8 @@ This app supports Apple Silicon only, macOS 13 or later, with one stable channel
 
 `release.json` owns the three-part version, increasing positive build, app name,
 repository, URLs and public Ed25519 update key. Keep the bundle ID and update key
-unchanged when moving computers or hosting. The source is public; no open-source
-license has been assigned. The personal Apps catalog is owned by the separate
+unchanged when moving computers or hosting. The project is MIT-licensed; third-party
+components retain their original terms. The personal Apps catalog is owned by the separate
 `teren-in` repository and is optional for downloading and updating this app.
 
 GitHub Actions retains only the encrypted `SPARKLE_PRIVATE_KEY` secret. Publication
@@ -65,8 +65,8 @@ the same verified artifact. A bad app or changed DMG requires a new version/buil
 
 The macOS job validates configuration, tests, builds and ad hoc signs the app,
 verifies bundle metadata and arm64 executables, and packages an APFS DMG containing
-the app and Applications shortcut. It verifies the previous feed signature and
-increasing build, then signs and verifies the new archive and single-entry feed.
+the app, Applications shortcut, LICENSE and THIRD_PARTY_NOTICES.md. It verifies the
+previous feed signature and increasing build, then signs and verifies the new archive and single-entry feed.
 The internal artifact includes SHA-256 hashes and the previous feed hash; it is
 retained for 14 days. The feed and DMG remain authenticated separately from the
 app's code signature.
@@ -90,6 +90,29 @@ Installed apps with an old feed address must still reach the signed current feed
 Do not remove those redirects after deleting obsolete storage objects. The first
 GitHub release can use `legacyFeedURLs` to read the prior signed feed; it must not
 silently treat an unreachable established app as a first publication.
+
+## Licenses in released builds
+
+The owner approved MIT for this app. `release.json` records `license: MIT` and
+[LICENSE](../LICENSE) contains the complete terms and copyright notice. Do not
+change the license, remove notices or regenerate the copyright year during a
+routine release without an explicit owner instruction.
+
+[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) includes Sparkle 2.10.1's complete
+upstream license and external notices. When upgrading a dependency, review the
+new version's actual license and update these notices before packaging.
+
+`scripts/licenses.py` verifies complete MIT terms, the copyright notice and the
+pinned Sparkle version. `build-app.sh` compares the notices with the actual SwiftPM
+checkout license and copies both documents to `Contents/Resources/Licenses` before
+code signing. This keeps notices with the installed app after a drag install or
+a Sparkle update. Packaging verifies bundle copies, adds the same files to the DMG
+root, mounts the finished image read-only and verifies both copies before update
+signing. Missing, incomplete or mismatched notices stop the build/release.
+
+Python regression tests cover notices surviving an app-only install, missing or
+modified bundle/image files, incomplete MIT terms, removed copyright, dependency
+license changes and an unapproved project-license change.
 
 ## Local checks and tools
 
