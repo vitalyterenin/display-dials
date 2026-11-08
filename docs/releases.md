@@ -210,3 +210,8 @@ public executable is running, Night Shift remains available and native login-ite
 status has not changed. Do not enable launch at login merely to manufacture a
 grant test. If no privacy grant exists, record that fact rather than claiming a
 TCC permission test passed.
+
+The [0.6.9 installed-app verification](refactoring-review.md#installed-app-interaction-verification--2026-11-08)
+records the subsequent live Off checks at enabled 0%/5% warmth, synchronization
+with changes in System Settings, and restoration of the original settings on
+macOS 27.2. It is separate from the automated fixtures and update-install checks.
