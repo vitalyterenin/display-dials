@@ -5,11 +5,6 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      republish_current:
-        description: 'Reuse the published DMG at the permanent download URL (main only)'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -30,16 +25,9 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
-          if [[ '${{ inputs.republish_current }}' == 'true' && "$GITHUB_REF" != refs/heads/main ]]; then
-            echo 'Republishing the current download is allowed only from main'
-            exit 1
-          fi
           python3 scripts/release.py validate
       - name: Test publication safety
-        run: |
-          python3 -m venv "$RUNNER_TEMP/publication-tests"
-          "$RUNNER_TEMP/publication-tests/bin/python" -m pip install 'boto3==1.42.97'
-          "$RUNNER_TEMP/publication-tests/bin/python" -m unittest discover -s Tests -p 'test_*.py'
+        run: python3 -m unittest discover -s Tests -p 'test_*.py'
       - name: Run read-only diagnostics and UI smoke check
         run: bash scripts/test.sh
       - name: Build for Apple Silicon
@@ -60,15 +48,9 @@ jobs:
           python3 scripts/release.py previous "$RUNNER_TEMP/previous.xml"
           previous_args=()
           if [[ -f "$RUNNER_TEMP/previous.xml" ]]; then previous_args+=(--previous "$RUNNER_TEMP/previous.xml"); fi
-          if [[ '${{ inputs.republish_current }}' == 'true' ]]; then
-            python3 scripts/release.py republish \
-              --output "$RUNNER_TEMP/release" --tools "$tools" \
-              --previous "$RUNNER_TEMP/previous.xml"
-          else
-            python3 scripts/release.py package \
-              --app "$RUNNER_TEMP/DisplayDials/Display Dials.app" \
-              --output "$RUNNER_TEMP/release" --tools "$tools" "${previous_args[@]}"
-          fi
+          python3 scripts/release.py package \
+            --app "$RUNNER_TEMP/DisplayDials/Display Dials.app" --output "$RUNNER_TEMP/release" \
+            --tools "$tools" "${previous_args[@]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name != 'pull_request'
         with:
@@ -78,10 +60,17 @@ jobs:
           retention-days: 14
 
   publish:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.republish_current && github.ref == 'refs/heads/main')
+    if: github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -90,12 +79,17 @@ jobs:
         with:
           name: display-dials-release
           path: release
-      - name: Install S3 client
-        run: python3 -m pip install 'boto3==1.42.97'
-      - name: Publish archive, then signed appcast
+      - name: Publish and verify GitHub DMG
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
-        run: |
-          test -n "$AWS_ACCESS_KEY_ID" && test -n "$AWS_SECRET_ACCESS_KEY"
-          python3 scripts/publish.py release
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish.py publish release
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: release/pages
+      - name: Deploy signed update feed
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        id: deployment
+      - name: Verify public update and remove older DMGs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish.py verify release

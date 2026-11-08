@@ -19,3 +19,6 @@ For release setup and publication, use the `app-release` skill and the
 If the skill is unavailable, read the private repository's README for its one-time
 installation, or fetch the shared guide directly. Refresh shared instructions
 before publishing. Keep this app's implementation details in `docs/releases.md`.
+
+Publish the current DisplayDials.dmg through this repository's GitHub Releases and
+the signed appcast through its GitHub Pages deployment. Never add cloud storage keys.

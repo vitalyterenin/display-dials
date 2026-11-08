@@ -1,156 +1,145 @@
-"""Exercise replacement and race protection without cloud credentials."""
+import copy
 import hashlib
-import importlib.util
-import io
 import json
+import os
 from pathlib import Path
-import tempfile
 import sys
+import tempfile
 import unittest
-import xml.etree.ElementTree as ET
+from unittest.mock import patch
 
-from botocore.exceptions import ClientError
-
-sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
-
-spec = importlib.util.spec_from_file_location('publish', Path(__file__).parents[1] / 'scripts/publish.py')
-publication = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(publication)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+import publish
 
 
-def feed(build, signature='signed', name='DisplayDials.dmg'):
-    download = publication.DOWNLOAD_URL.rsplit('/', 1)[0] + '/' + name
-    return f'''<rss xmlns:sparkle="{publication.NS['sparkle']}"><channel><item>
-    <sparkle:version>{build}</sparkle:version><sparkle:shortVersionString>0.6.{build}</sparkle:shortVersionString>
-    <enclosure url="{download}" length="3" sparkle:edSignature="{signature}"/>
-    </item></channel></rss>'''.encode()
+class Client:
+    def __init__(self):
+        self.calls = []
+        self.latest = None
+        self.existing = None
+        self.releases = []
+
+    def request(self, path, method='GET', data=None):
+        self.calls.append((path, method, data))
+        if path.startswith('/git/ref/'):
+            return {'object': {'type': 'commit', 'sha': 'checked'}}
+        if path == '/releases/latest': return self.latest
+        if path.startswith('/releases/tags/'): return self.existing
+        if path.startswith('/releases?'): return self.releases
+        if method == 'POST': return {'id': 42, 'assets': [], 'draft': True}
+        return None
+
+    def upload(self, release_id, name, body):
+        self.calls.append(('upload', release_id, name))
+
+    @property
+    def mutations(self):
+        return [c for c in self.calls if c[0] == 'upload' or c[1] != 'GET']
 
 
-class Storage:
-    def __init__(self, objects=None):
-        self.objects = dict(objects or {})
-        self.puts = []
+class PublishTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.data = publish.config()
+        self.archive = b'verified signed disk image'
+        self.old = b'<rss><channel><item xmlns:s="http://www.andymatuschak.org/xml-namespaces/sparkle"><s:version>1</s:version></item></channel></rss>'
+        self.feed = f'''<rss xmlns:sparkle="{publish.NS['sparkle']}"><channel><item>
+<sparkle:version>{self.data['build']}</sparkle:version>
+<sparkle:shortVersionString>{self.data['version']}</sparkle:shortVersionString>
+<sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+<enclosure url="{self.data['downloadURL']}" length="{len(self.archive)}" sparkle:edSignature="verified-by-build"/>
+</item></channel></rss>'''.encode()
+        self.state = {'previousFeedSHA256': hashlib.sha256(self.old).hexdigest(),
+                      'sourceURL': self.data['feedURL'], 'sha256': {
+                          publish.ARCHIVE_NAME: hashlib.sha256(self.archive).hexdigest(),
+                          'appcast.xml': hashlib.sha256(self.feed).hexdigest()}}
+        (self.root / publish.ARCHIVE_NAME).write_bytes(self.archive)
+        (self.root / 'appcast.xml').write_bytes(self.feed)
+        self.save_state()
+        self.client = Client()
+        self.environ = patch.dict(os.environ, {'GITHUB_SHA': 'checked',
+            'GITHUB_REF': 'refs/tags/v' + self.data['version'],
+            'GITHUB_REPOSITORY': self.data['githubRepository']})
+        self.environ.start(); self.addCleanup(self.environ.stop)
 
-    def get_object(self, Bucket, Key):
-        if Key not in self.objects:
-            raise ClientError({'ResponseMetadata': {'HTTPStatusCode': 404}}, 'GetObject')
-        content = self.objects[Key]
-        return {'Body': io.BytesIO(content), 'ETag': self.etag(content)}
+    def save_state(self):
+        (self.root / 'publication.json').write_text(json.dumps(self.state))
 
-    @staticmethod
-    def etag(content):
-        return '"' + hashlib.md5(content).hexdigest() + '"'
+    def fetch(self, url):
+        return self.old if url == self.data['feedURL'] else self.archive
 
-    def put_object(self, **arguments):
-        key = arguments['Key']
-        if key not in publication.ALLOWED_KEYS:
-            raise ClientError({'ResponseMetadata': {'HTTPStatusCode': 403}}, 'PutObject')
-        previous = self.objects.get(key)
-        if (arguments.get('IfNoneMatch') == '*' and previous is not None
-                or 'IfMatch' in arguments and (previous is None or arguments['IfMatch'] != self.etag(previous))):
-            raise ClientError({'ResponseMetadata': {'HTTPStatusCode': 412}}, 'PutObject')
-        self.objects[key] = arguments['Body']
-        self.puts.append(arguments)
+    def test_publish_verifies_download_before_staging_pages(self):
+        publish.publish(self.root, self.client, self.fetch)
+        self.assertEqual((self.root / 'pages/appcast.xml').read_bytes(), self.feed)
+        self.assertIn(('upload', 42, publish.ARCHIVE_NAME), self.client.calls)
+        self.assertEqual(self.client.mutations[-1][2], {'draft': False, 'make_latest': 'true'})
 
+    def test_corrupt_artifact_cannot_mutate_github(self):
+        (self.root / publish.ARCHIVE_NAME).write_bytes(b'changed')
+        with self.assertRaisesRegex(ValueError, 'differs'):
+            publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(self.client.calls)
 
-class PublicationTests(unittest.TestCase):
-    def artifact(self, content, etag=None, archive=b'new'):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        path = Path(temporary.name)
-        (path / 'DisplayDials.dmg').write_bytes(archive)
-        (path / 'appcast.xml').write_bytes(content)
-        state = {'etag': etag, 'sha256': {
-            'DisplayDials.dmg': hashlib.sha256(archive).hexdigest(),
-            'appcast.xml': hashlib.sha256(content).hexdigest()}}
-        (path / 'publication.json').write_text(json.dumps(state))
-        return path
+    def test_stale_feed_cannot_mutate_release(self):
+        with self.assertRaisesRegex(ValueError, 'feed changed'):
+            publish.publish(self.root, self.client, lambda url: b'changed')
+        self.assertFalse(self.client.mutations)
 
-    def test_first_publication_has_only_two_permanent_objects(self):
-        storage = Storage()
-        publication.publish(self.artifact(feed(1)), storage)
-        self.assertEqual(set(storage.objects), publication.ALLOWED_KEYS)
-        self.assertEqual([x['Key'] for x in storage.puts], [publication.DOWNLOAD_KEY, publication.FEED_KEY])
-        self.assertTrue(all('no-store' in x['CacheControl'] for x in storage.puts))
+    def test_wrong_tag_commit_is_rejected(self):
+        with patch.dict(os.environ, {'GITHUB_SHA': 'another'}):
+            with self.assertRaisesRegex(ValueError, 'checked commit'):
+                publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(self.client.mutations)
 
-    def test_next_release_replaces_the_same_object(self):
-        current = feed(1, 'old')
-        storage = Storage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: current})
-        publication.publish(self.artifact(feed(2), Storage.etag(current)), storage)
-        self.assertEqual(len(storage.objects), 2)
-        self.assertEqual(storage.objects[publication.DOWNLOAD_KEY], b'new')
+    def test_wrong_repository_and_branch_are_rejected(self):
+        for env in [{'GITHUB_REPOSITORY': 'other/repo'}, {'GITHUB_REF': 'refs/heads/main'}]:
+            with patch.dict(os.environ, env), self.assertRaises(ValueError):
+                publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(self.client.calls)
 
-    def test_releases_do_not_modify_the_catalog_or_another_app(self):
-        unrelated = {'apps/index.html': b'catalog', 'apps/OtherApp.dmg': b'other-app', 'index.html': b'personal-site'}
-        storage = Storage(unrelated)
-        publication.publish(self.artifact(feed(1)), storage)
-        for key, content in unrelated.items():
-            self.assertEqual(storage.objects[key], content)
-        self.assertEqual({item['Key'] for item in storage.puts}, publication.ALLOWED_KEYS)
+    def test_newer_release_is_preserved(self):
+        self.client.latest = {'tag_name': 'v999.0.0'}
+        with self.assertRaisesRegex(ValueError, 'newer'):
+            publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(self.client.mutations)
 
-    def test_overbroad_credentials_abort_before_publication(self):
-        class OverbroadStorage(Storage):
-            def put_object(self, **arguments):
-                if arguments['Key'] not in publication.ALLOWED_KEYS:
-                    raise ClientError({'ResponseMetadata': {'HTTPStatusCode': 412}}, 'PutObject')
-                return super().put_object(**arguments)
-        storage = OverbroadStorage()
-        with self.assertRaisesRegex(ValueError, 'outside its two release objects'):
-            publication.publish(self.artifact(feed(1)), storage)
-        self.assertEqual(storage.objects, {})
+    def test_cached_pages_cannot_allow_reusing_latest_github_build(self):
+        self.client.latest = {'tag_name': 'v0.0.1', 'body': f"Build {self.data['build']}."}
+        with self.assertRaisesRegex(ValueError, 'latest GitHub release'):
+            publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(self.client.mutations)
 
-    def test_stale_feed_aborts_before_replacing_download(self):
-        storage = Storage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: feed(5)})
-        with self.assertRaisesRegex(ValueError, 'changed before publication'):
-            publication.publish(self.artifact(feed(2), '"stale"'), storage)
-        self.assertEqual(storage.puts, [])
+    def test_existing_release_can_only_reuse_exact_bytes(self):
+        self.client.existing = {'id': 42, 'draft': False, 'assets': [
+            {'name': publish.ARCHIVE_NAME, 'browser_download_url': 'https://example.test/dmg'}]}
+        publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(any(c[0] == 'upload' for c in self.client.calls))
+        with self.assertRaisesRegex(ValueError, 'different archive'):
+            publish.publish(self.root, self.client, lambda u: self.old if u == self.data['feedURL'] else b'other')
 
-    def test_cannot_reuse_build_number_with_a_new_signature(self):
-        current = feed(1, 'old')
-        storage = Storage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: current})
-        with self.assertRaisesRegex(ValueError, 'cannot be reused'):
-            publication.publish(self.artifact(feed(1, 'different'), Storage.etag(current)), storage)
-        self.assertEqual(storage.puts, [])
+    def test_failed_pages_verification_never_deletes_assets(self):
+        with self.assertRaisesRegex(ValueError, 'did not converge'):
+            publish.verify(self.root, self.client, self.fetch, attempts=1)
+        self.assertFalse(self.client.mutations)
 
-    def test_migration_reuses_current_signed_archive(self):
-        current = feed(1, name='DisplayDials-0.6.1.dmg')
-        storage = Storage({publication.FEED_KEY: current})
-        publication.publish(self.artifact(feed(1), Storage.etag(current)), storage)
-        self.assertEqual(storage.objects[publication.DOWNLOAD_KEY], b'new')
+    def test_cleanup_preserves_current_drafts_tags_and_unrelated_assets(self):
+        self.client.latest = {'tag_name': 'v' + self.data['version']}
+        self.client.releases = [
+            {'tag_name': 'v0.0.1', 'draft': False, 'assets': [
+                {'id': 1, 'name': publish.ARCHIVE_NAME}, {'id': 2, 'name': 'notes.txt'}]},
+            {'tag_name': 'v' + self.data['version'], 'draft': False, 'assets': [{'id': 3, 'name': publish.ARCHIVE_NAME}]},
+            {'tag_name': 'v0.0.2', 'draft': True, 'assets': [{'id': 4, 'name': publish.ARCHIVE_NAME}]}]
+        publish.verify(self.root, self.client, lambda u: self.feed if u == self.data['feedURL'] else self.archive, attempts=1)
+        self.assertEqual(self.client.mutations, [('/releases/assets/1', 'DELETE', None)])
 
-    def test_retry_after_publication_is_idempotent(self):
-        content = feed(1)
-        storage = Storage({publication.DOWNLOAD_KEY: b'new', publication.FEED_KEY: content})
-        publication.publish(self.artifact(content, '"earlier-etag"'), storage)
-        self.assertEqual(len(storage.objects), 2)
-
-    def test_rejects_versioned_or_historical_downloads(self):
-        history = ET.fromstring(feed(1))
-        history.find('channel').append(ET.fromstring(feed(2)).find('./channel/item'))
-        for content in [feed(1, name='DisplayDials-0.6.1.dmg'), ET.tostring(history)]:
-            with self.assertRaisesRegex(ValueError, 'one current release'):
-                publication.publish(self.artifact(content), Storage())
-
-    def test_archive_race_does_not_publish_feed(self):
-        class RacingStorage(Storage):
-            def put_object(self, **arguments):
-                if arguments['Key'] == publication.DOWNLOAD_KEY:
-                    self.objects[arguments['Key']] = b'concurrent-release'
-                return super().put_object(**arguments)
-        current = feed(1, 'old')
-        storage = RacingStorage({publication.DOWNLOAD_KEY: b'old', publication.FEED_KEY: current})
-        with self.assertRaises(ClientError):
-            publication.publish(self.artifact(feed(2), Storage.etag(current)), storage)
-        self.assertEqual(storage.objects[publication.FEED_KEY], current)
-
-    def test_changed_artifact_is_never_uploaded(self):
-        path = self.artifact(feed(1))
-        (path / 'DisplayDials.dmg').write_bytes(b'bad')
-        storage = Storage()
-        with self.assertRaisesRegex(ValueError, 'verified build artifact'):
-            publication.publish(path, storage)
-        self.assertEqual(storage.puts, [])
+    def test_publication_does_not_reuse_a_build(self):
+        self.old = self.feed.replace(b'arm64', b'arm64 ')
+        self.state['previousFeedSHA256'] = hashlib.sha256(self.old).hexdigest(); self.save_state()
+        with self.assertRaisesRegex(ValueError, 'Build numbers'):
+            publish.publish(self.root, self.client, self.fetch)
+        self.assertFalse(self.client.mutations)
 
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == '__main__': unittest.main()

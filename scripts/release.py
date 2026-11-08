@@ -33,27 +33,21 @@ def config():
         raise ValueError('publicEDKey must contain the Sparkle public key')
     if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', data['id']):
         raise ValueError('id must be a stable lowercase application slug')
-    if object_key(data['downloadURL']) != 'apps/' + ARCHIVE_NAME:
-        raise ValueError('The download must be a single app-named DMG directly inside /apps/')
-    if object_key(data['feedURL']) != 'apps/feeds/' + data['id'] + '.xml':
-        raise ValueError('The feed must be /apps/feeds/<app-id>.xml')
-    for url in data.get('legacyFeedURLs', []):
-        object_key(url)
+    repository = data['githubRepository']
+    if not re.fullmatch(r'[A-Za-z0-9-]+/[A-Za-z0-9_.-]+', repository):
+        raise ValueError('Expected an owner/repository identity')
+    owner, repo = repository.split('/')
+    if data['downloadURL'] != f'https://github.com/{repository}/releases/latest/download/{ARCHIVE_NAME}':
+        raise ValueError('Expected the permanent app-named GitHub Releases download')
+    if data['feedURL'] != f'https://{owner.lower()}.github.io/{repo}/appcast.xml':
+        raise ValueError('Expected this repository\'s GitHub Pages appcast')
+    allowed_legacy = {f"https://teren.in/apps/feeds/{data['id']}.xml"}
+    if data['id'] == 'display-dials':
+        allowed_legacy.add('https://teren.in/updates/display-dials/appcast.xml')
+    if not set(data.get('legacyFeedURLs', [])).issubset(allowed_legacy):
+        raise ValueError('Unexpected legacy updater URL')
     uuid.UUID(data['telemetryDeckAppID'])
     return data
-
-
-def object_key(url):
-    parsed = urllib.parse.urlsplit(url)
-    if (parsed.scheme != 'https' or parsed.netloc != 'teren.in' or parsed.query or parsed.fragment
-            or not re.fullmatch(r'/[A-Za-z0-9._/-]+', parsed.path)
-            or any(part in ('', '.', '..') for part in parsed.path.split('/')[1:])):
-        raise ValueError('Expected a plain HTTPS file URL on teren.in')
-    return parsed.path.lstrip('/')
-
-
-def origin_url(url):
-    return 'https://storage.yandexcloud.net/teren.in/' + object_key(url)
 
 
 def write_plist(path):
@@ -131,11 +125,13 @@ def package(app, output, tools, previous):
     if previous:
         previous = pathlib.Path(previous)
         content = previous.read_bytes()
+        args, kwargs = signing_args()
+        run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify', previous, **kwargs)
         _, versions = read_feed(content)
         if versions and int(data['build']) <= max(versions):
             raise ValueError('New build must be greater than every published build')
     state_file = pathlib.Path(previous).with_suffix('.state.json') if previous else None
-    state = json.loads(state_file.read_text()) if state_file and state_file.exists() else {'etag': None}
+    state = json.loads(state_file.read_text()) if state_file and state_file.exists() else {'previousFeedSHA256': None, 'sourceURL': data['feedURL']}
     create_disk_image(app, archive)
     prepare_feed(output, tools, data, state)
 
@@ -146,7 +142,7 @@ def prepare_feed(output, tools, data, state):
     run(pathlib.Path(tools) / 'bin/generate_appcast', *args,
         '--download-url-prefix', data['downloadURL'].removesuffix(ARCHIVE_NAME),
         '--maximum-deltas', '0', '--maximum-versions', '1',
-        '--link', 'https://teren.in/apps/', '-o', output / 'appcast.xml', output, **kwargs)
+        '--link', 'https://github.com/' + data['githubRepository'], '-o', output / 'appcast.xml', output, **kwargs)
     run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify',
         output / 'appcast.xml', **kwargs)
     root, _ = read_feed((output / 'appcast.xml').read_bytes())
@@ -168,60 +164,29 @@ def prepare_feed(output, tools, data, state):
     print(f'Ready: {archive}\nFeed: {output / "appcast.xml"}')
 
 
-def republish(output, tools, previous):
-    """Reuse the signed, published DMG without rebuilding or changing its version."""
-    data = config()
-    output = pathlib.Path(output).resolve()
-    output.mkdir(parents=True, exist_ok=True)
-    if any(output.iterdir()):
-        raise ValueError('Use an empty package output directory')
-    previous = pathlib.Path(previous)
-    args, kwargs = signing_args()
-    run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify', previous, **kwargs)
-    root, _ = read_feed(previous.read_bytes())
-    item = max(root.findall('./channel/item'), key=lambda i: int(i.findtext('sparkle:version', namespaces=NS)))
-    if (item.findtext('sparkle:version', namespaces=NS) != data['build']
-            or item.findtext('sparkle:shortVersionString', namespaces=NS) != data['version']):
-        raise ValueError('The configured version must equal the currently published release')
-    enclosure = item.find('enclosure')
-    source = enclosure.get('url', '')
-    allowed = {data['downloadURL']} | {
-        url.rsplit('/', 1)[0] + '/' + ARCHIVE_NAME for url in data.get('legacyFeedURLs', [])}
-    if source not in allowed:
-        raise ValueError('The published download must belong to this application')
-    with urllib.request.urlopen(origin_url(source), timeout=60) as response:
-        content = response.read()
-    if len(content) != int(enclosure.get('length')):
-        raise ValueError('Published download length does not match the signed feed')
-    archive = output / ARCHIVE_NAME
-    archive.write_bytes(content)
-    signature = enclosure.get('{' + NS['sparkle'] + '}edSignature')
-    run(pathlib.Path(tools) / 'bin/sign_update', *args, '--verify', archive, signature, **kwargs)
-    state = json.loads(previous.with_suffix('.state.json').read_text())
-    prepare_feed(output, tools, data, state)
-
-
 def previous(path):
-    # Read the origin directly for the current build number and publication ETag.
     data = config()
     path = pathlib.Path(path)
     for url in [data['feedURL'], *data.get('legacyFeedURLs', [])]:
-        request = urllib.request.Request(origin_url(url), headers={'Cache-Control': 'no-cache'})
+        request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache'})
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 content = response.read()
-                etag = response.headers['ETag'] if url == data['feedURL'] else None
         except urllib.error.HTTPError as error:
             if error.code == 404:
                 continue
             raise
         read_feed(content)
         path.write_bytes(content)
-        path.with_suffix('.state.json').write_text(json.dumps({'etag': etag, 'sourceURL': url}))
+        path.with_suffix('.state.json').write_text(json.dumps({
+            'previousFeedSHA256': hashlib.sha256(content).hexdigest(), 'sourceURL': url}))
         return
+    if data.get('legacyFeedURLs'):
+        raise ValueError('An established application must have a reachable previous signed feed')
     print('No previous release; preparing the first appcast.')
     path.unlink(missing_ok=True)
-    path.with_suffix('.state.json').write_text(json.dumps({'etag': None}))
+    path.with_suffix('.state.json').write_text(json.dumps({
+        'previousFeedSHA256': None, 'sourceURL': data['feedURL']}))
 
 
 def main():
@@ -236,16 +201,11 @@ def main():
     p.add_argument('--output', required=True)
     p.add_argument('--tools', required=True)
     p.add_argument('--previous')
-    p = commands.add_parser('republish')
-    p.add_argument('--output', required=True)
-    p.add_argument('--tools', required=True)
-    p.add_argument('--previous', required=True)
     commands.add_parser('validate')
     args = parser.parse_args()
     if args.command == 'plist': write_plist(args.path)
     elif args.command == 'previous': previous(args.path)
     elif args.command == 'package': package(args.app, args.output, args.tools, args.previous)
-    elif args.command == 'republish': republish(args.output, args.tools, args.previous)
     else:
         data = config()
         tag = os.environ.get('RELEASE_TAG')
