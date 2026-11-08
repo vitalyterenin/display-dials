@@ -7,6 +7,7 @@
 | `Sources/DisplayDials/main.swift` | Menu bar item, panel, More options menu, and diagnostic entry points |
 | `Sources/NightShiftBridge/` | Objective-C adapter for the private Night Shift API |
 | `Sources/DisplayDials/UpdateController.swift` | Sparkle startup, availability, and preferences |
+| `Sources/DisplayDials/WarmthAdjustment.swift` | Off/on mapping, ordered setting writes and failure handling |
 | `Sources/DisplayDials/WarmthSlider.swift` | Continuous native slider, tick deduplication and drag completion |
 | `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
 | `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
@@ -27,12 +28,17 @@ To rename the product, review `AppIdentity`, `Package.swift`, bundle metadata in
 
 `AppDelegate` creates an accessory application with a menu bar item and no Dock
 window. Its template SF Symbol is `sun.max`. A transient `NSPopover` contains the
-288 × 116 point panel, which opens at launch and when the menu bar item is clicked.
+288 × 116 point panel, which opens on interactive launch and when the menu bar item is clicked.
+Login launches stay quiet; an undecided statistics prompt appears on the first
+manual opening instead of the panel.
 Reopening the application also shows the panel if it is hidden.
 
-`PanelController` uses stock `NSSwitch`, `NSSlider`, `NSButton`, `NSTextField`, and
+`PanelController` uses native `NSSlider`, `NSButton`, `NSTextField`, and
 `NSStackView` controls with system fonts and colors. The slider has 10 tick positions
-including both endpoints. It applies each new tick immediately while dragging. Repeated mouse events
+including both endpoints: Off at zero and nine positive warmth levels. There is
+no separate switch. The slider remains enabled while Night Shift is off, and is
+disabled only when the system is unavailable. It applies each new tick immediately
+while dragging. Repeated mouse events
 within the same tick are suppressed by `WarmthSlider`; returning to an earlier
 tick applies it again. System reads do not reposition the knob during tracking.
 After tracking ends, the slider reconciles with the system and the final requested
@@ -68,10 +74,19 @@ The ABI reference is [Shifty's CBBlueLightClient header](https://github.com/thom
 Matching the ABI does not guarantee compatibility with future macOS versions.
 
 All bridge calls run on the main thread. Reads return availability, enabled and
-active state, and strength. The UI uses the enabled flag for its switch and On/Off
-label; it does not display the separate active flag. Invalid responses or missing
-availability disable the controls. User actions invoke `setEnabled:` or
-`setStrength:commit:`. The adapter rejects nonfinite or out-of-range strength values.
+active state, and strength. The On/Off label reflects the enabled flag, not the
+separate active flag. When disabled, the slider reads zero even if macOS remembers
+a nonzero strength. Enabled external values are displayed without a setting write;
+an external enabled state with zero strength can therefore read On · 0%.
+Invalid responses or missing availability disable the slider.
+
+`WarmthAdjustment` maps user-selected zero to `setEnabled(false)` without changing
+remembered strength. Positive values call `setStrength:commit:` first and enable
+Night Shift only if it was off. A failed strength write prevents enabling an old
+value; a failed enable/disable is reported rather than treated as success. The
+controller reads fresh availability/enabled state for each action. The adapter
+rejects nonfinite or out-of-range strength values. No write occurs just from reading
+state or opening the panel.
 
 Changes apply through macOS globally, preserve its schedule, and persist after
 Display Dials exits. The app does not implement per-monitor controls or render a
@@ -185,8 +200,11 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 ```
 
 `test.sh` builds a debug executable, runs the isolated consent/payload unit tests,
-prints Night Shift diagnostics, then initializes the UI and exits. Neither
-diagnostic path writes Night Shift settings, starts the updater, or sends statistics. The build script creates
+prints Night Shift diagnostics and initializes the UI, then exercises native menu
+geometry, live slider tracking and integrated Off/on transitions in isolated test
+fixtures. These checks do not write Night Shift, register login items, start the
+updater or send statistics. Menu geometry tests briefly open their own popover/menu.
+The build script creates
 and signs the release bundle and verifies its code signature.
 
 `--diagnostics` emits JSON containing app name/version, Night Shift support,
@@ -204,29 +222,9 @@ swift run --scratch-path "$build_dir" --arch arm64 DisplayDials --diagnostics
 
 Read-only checks do not validate setting writes, updater installation, every display
 configuration, or compatibility with future macOS releases. Manual checks should
-cover switching Night Shift, selecting slider positions, reopening the panel after
+cover moving from Off to a positive position and back, live tick changes, reopening the panel after
 external changes, and opening the complete options menu through Quit. Restore the
 original Night Shift settings after a manual write check.
-
-## Optional statistics
-
-`UsageTelemetry` is a main-actor consent gate. Its transport is not even created
-until consent is saved and a batch is ready. The executable enables the gate only
-inside a configured app bundle during normal launches, not diagnostic or smoke runs.
-`StatisticsPreferences` explains the collected fields before opt-in and exposes
-the same choice through More options. Closing the first prompt saves a refusal.
-
-The implementation uses the official HTTPS Ingest API v2 without importing the
-TelemetryDeck SDK, which otherwise adds extensive default metadata and a repeating
-upload timer. Events are a typed enum with fixed parameters; no general-purpose
-string/error collector is exposed. A maximum of 50 events stays in memory for an
-approximately one-minute batch; no events are saved to disk or retried.
-Disabling cancels the timer and transport and resets the installation ID.
-See the [data disclosure](privacy.md) for event names, payloads and vendor storage limits.
-
-The app privacy manifest conservatively declares interaction data linked to a
-random installation identifier for analytics, without advertising tracking.
-This is not an App Store eligibility assessment; the app still uses private APIs.
 
 ### Options menu regression checks
 
@@ -253,3 +251,29 @@ lifecycle with an isolated tracking cell. It requires changed-tick actions befor
 tracking ends, suppresses duplicate events within a tick, verifies reverse movement,
 and checks that drag completion happens once. Unchanged gestures and non-drag
 keyboard/accessibility action delivery are covered without changing macOS settings.
+
+`WarmthAdjustmentTests.swift` verifies that Off disables without overwriting the
+remembered strength, positive positions set strength before enabling, repeated Off
+and already-enabled changes avoid redundant toggles, and failures/invalid values
+are handled without continuing an unsafe setting sequence. These are simulated
+writes, not a claim of compatibility with every macOS/display configuration.
+
+## Optional statistics
+
+`UsageTelemetry` is a main-actor consent gate. Its transport is not even created
+until consent is saved and a batch is ready. The executable enables the gate only
+inside a configured app bundle during normal launches, not diagnostic or smoke runs.
+`StatisticsPreferences` explains the collected fields before opt-in and exposes
+the same choice through More options. Closing the first prompt saves a refusal.
+
+The implementation uses the official HTTPS Ingest API v2 without importing the
+TelemetryDeck SDK, which otherwise adds extensive default metadata and a repeating
+upload timer. Events are a typed enum with fixed parameters; no general-purpose
+string/error collector is exposed. A maximum of 50 events stays in memory for an
+approximately one-minute batch; no events are saved to disk or retried.
+Disabling cancels the timer and transport and resets the installation ID.
+See the [data disclosure](privacy.md) for event names, payloads and vendor storage limits.
+
+The app privacy manifest conservatively declares interaction data linked to a
+random installation identifier for analytics, without advertising tracking.
+This is not an App Store eligibility assessment; the app still uses private APIs.

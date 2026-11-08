@@ -5,7 +5,6 @@ public enum UsageEvent: Sendable {
     case launched
     case collectionEnabled
     case panelOpened(PanelSource)
-    case nightShiftChanged(enabled: Bool, succeeded: Bool)
     case warmthChanged(position: Int, succeeded: Bool)
     case updatePreferences(checks: Bool, installation: Bool)
     case manualUpdateCheck
@@ -17,8 +16,6 @@ public enum UsageEvent: Sendable {
         case .launched: ("App.launched", [:])
         case .collectionEnabled: ("Statistics.enabled", [:])
         case .panelOpened(let source): ("Panel.opened", ["source": source.rawValue])
-        case .nightShiftChanged(let enabled, let succeeded):
-            ("NightShift.changed", ["enabled": String(enabled), "succeeded": String(succeeded)])
         case .warmthChanged(let position, let succeeded):
             ("Warmth.changed", ["position": String(min(10, max(1, position))), "succeeded": String(succeeded)])
         case .updatePreferences(let checks, let installation):

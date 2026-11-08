@@ -30,3 +30,8 @@ xcrun swiftc Sources/DisplayDials/OptionsMenuPresentation.swift Tests/MenuLayout
 xcrun swiftc Sources/DisplayDials/WarmthSlider.swift Tests/WarmthSliderTests.swift \
     -o "$build_dir/warmth-slider-tests"
 "$build_dir/warmth-slider-tests"
+
+# Verify the integrated Off/on slider without writing real system settings.
+xcrun swiftc Sources/DisplayDials/WarmthAdjustment.swift Tests/WarmthAdjustmentTests.swift \
+    -o "$build_dir/warmth-adjustment-tests"
+"$build_dir/warmth-adjustment-tests"

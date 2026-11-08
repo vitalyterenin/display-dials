@@ -1,135 +1,97 @@
 # Display Dials
 
-A small macOS menu bar app for adjusting display warmth with Night Shift.
-The interface uses native AppKit controls and a system sun symbol.
+A small macOS menu bar app for controlling Night Shift with one warmth slider.
+Move fully left to turn it off; move right to turn it on and adjust its warmth.
 
-## Requirements
+![Display Dials panel with a single slider from Off to Warmer and a More options button](docs/assets/panel.png)
 
-- An Apple Silicon Mac running macOS 13 or later. Distributed builds are arm64 only.
-- Night Shift must be available on the current system for warmth controls to work.
-- Building from source requires Swift 6 or later through Xcode or Command Line
-  Tools. The first build downloads the pinned Sparkle 2.10.1 dependency.
+## Install
 
-## Using the app
+[Download DisplayDials.dmg](https://teren.in/apps/DisplayDials.dmg)
 
-Open Display Dials, then click the sun in the menu bar to show or hide its panel.
-The panel also opens on a normal launch. Automatic launch at login keeps the app
-in the menu bar without opening the panel.
+Requires an **Apple Silicon Mac with macOS 13 or later** and available Night Shift
+support. The permanent download always contains the current release.
 
-- **Night Shift switch:** enables or disables the system setting.
-- **Warmth slider:** selects one of 10 positions from Cooler to Warmer. Each new position
-  is applied immediately while dragging; you do not need to release the slider. The percentage shows system strength,
-  not a calibrated color temperature.
-- **Status:** shows `On · …%`, `Off`, or `Unavailable`. On reflects the system's
-  enabled setting; it is not a measurement of the screen's current color.
-- **More options (…):** shows the installed version, **Launch at Login**, update
-  commands and preferences, **Usage Statistics…**, and **Quit Display Dials**.
-  The version row is informational and cannot be clicked.
+1. Open the DMG and drag **Display Dials.app** onto **Applications**.
+2. Eject the disk image and open the installed app. A writable location such as
+   `~/Applications` also works.
+3. Current builds are ad hoc signed and not notarized. If macOS blocks the first
+   downloaded launch, use **System Settings > Privacy & Security > Open Anyway**.
 
-The slider is disabled when Night Shift is off. When Night Shift is unavailable,
-both controls are disabled; hover over the status for diagnostic details.
-An unsuccessful setting change displays an error in the status line.
+## Use the slider
 
-Changes use macOS Night Shift globally, preserve its schedule, and persist after
-Display Dials quits. Display Dials has no independent schedule, brightness control,
-or per-monitor settings. Existing strength values between the slider's positions
-are not changed just by opening the panel.
+Click the sun in the menu bar to open or close the panel. A normal launch or
+application reopen shows it; automatic launch at login stays quietly in the menu bar.
+
+- **Off:** the leftmost of 10 positions disables Night Shift. A disabled system
+  always appears at this endpoint, regardless of its remembered warmth.
+- **Warmer:** the other nine positions enable Night Shift and select increasing
+  strength. Each new tick applies immediately while dragging, before mouse release.
+  Keyboard and accessibility changes also apply immediately.
+- **Status:** `On · …%`, `Off`, `Unavailable`, or an error. The percentage is the
+  system's normalized warmth, not calibrated kelvin or a brightness measurement.
+- **More options (…):** installed version, Launch at Login, update commands and
+  preferences, Usage Statistics, and Quit. The version row is informational.
+
+The slider remains usable when Night Shift is off. It is disabled only when the
+system API or Night Shift is unavailable. Hover over the status for details.
+A failed change shows an error and reconciles the control with the actual system.
+
+The app changes Night Shift globally and preserves its schedule. Settings persist
+when the app quits; macOS schedules and other utilities can subsequently change
+its enabled state. Turning it off leaves macOS's remembered warmth intact. Opening
+or polling the panel never changes settings or rounds an external strength value.
+Display Dials has no brightness adjustment, per-monitor settings or custom schedule.
 
 ## Launch at login
 
-Use **More options (…) > Launch at Login** to start Display Dials automatically
-when you sign in to macOS, or turn it off again. The app does not add itself to
-Login Items automatically. Turning this setting off leaves the current app
-running and prevents its automatic launch on subsequent logins.
+Use **More options (…) > Launch at Login**. The app does not register itself
+without this action. Turning it off prevents future login launches and leaves the
+current process running. The checkmark reflects macOS Login Items.
 
-The checkmark reflects macOS Login Items rather than a separate saved app setting.
-If macOS requires approval, the menu shows **Launch at Login (Approval Required)**
-with a mixed mark and provides **Allow in System Settings…**. You can grant approval
-in **System Settings > General > Login Items & Extensions**, or turn the setting off
-in the app. Names in System Settings can vary with the macOS version.
+If approval is required, use **Allow in System Settings…** and allow the app in
+**System Settings > General > Login Items & Extensions**. Names vary by macOS
+version. This preference needs an app installed on a writable disk; it is disabled
+inside a read-only DMG and in diagnostic/smoke modes.
 
-Install the app on a writable disk before changing this preference. The setting
-is unavailable from a read-only DMG or a raw SwiftPM executable. Diagnostics and
-smoke checks never register or unregister login items.
+## Updates
 
-## Install or build locally
+**Check for Updates…** checks immediately. Automatic checks and automatic
+installation default to enabled; saved user choices take precedence. Both can be
+changed in More options. Installation is disabled there while automatic checks
+are off.
 
-Download the current release from the permanent [DisplayDials.dmg](https://teren.in/apps/DisplayDials.dmg) link.
-Each publication replaces this file; the download name does not include a version.
+Sparkle checks the [signed stable feed](https://teren.in/apps/feeds/display-dials.xml)
+on a four-hour schedule while the app runs. Installation can wait for quit or
+permission. One signed DMG serves manual downloads and updates; there is one stable
+channel and no public historical downloads. Update traffic is independent of usage
+statistics and Sparkle system profiling is disabled.
 
-Open the downloaded DMG, drag **Display Dials.app** onto the **Applications**
-shortcut, then eject the disk image and open the installed app. You can instead
-copy it to a writable location such as `~/Applications`. Builds currently use ad hoc code
-signing and are not notarized. A downloaded copy may require approval through
-**System Settings > Privacy & Security > Open Anyway** on its first launch.
-
-To build from a checkout, run these commands in the repository root:
-
-```sh
-# Compile, print read-only diagnostics, and initialize the UI without changing Night Shift.
-bash scripts/test.sh
-# Build an arm64 release bundle, include Sparkle, and verify its code signature.
-bash scripts/build-app.sh
-# Launch the built application.
-open "$HOME/Library/Developer/DisplayDials/Display Dials.app"
-```
-
-The build script replaces its existing output bundle. By default, the bundle is at
-`~/Library/Developer/DisplayDials/Display Dials.app` and the build cache is at
-`~/Library/Developer/DisplayDials/Build`. They live outside Documents to avoid
-file-provider metadata invalidating signatures and slowing cache access.
-Override them with `DISPLAY_DIALS_OUTPUT_DIR` and `DISPLAY_DIALS_BUILD_DIR`.
-
-## Updates and version
-
-The first row of **More options (…)** displays the running app's version from its
-bundle metadata. [release.json](release.json) defines the source version and build
-number; it does not prove that a corresponding release has already been published.
-
-Sparkle checks the [stable update feed](https://teren.in/apps/feeds/display-dials.xml).
-Automatic checks and automatic installation default to enabled; saved user
-preferences take precedence. Use **Check for Updates…** to check manually, or
-change the two automatic-update preferences in the same menu. Automatic installation
-is unavailable in the menu while automatic checks are off.
-
-Scheduled checks use a four-hour interval while the app is running. Installation
-can require quitting the app or granting permission; it is not guaranteed to happen
-immediately after a check. Both the appcast and update archives require signatures.
-Update requests contact the update host. Sparkle system profiling is disabled.
+The app displays its running bundle version. Source metadata in
+[release.json](release.json) does not prove that a release has been published.
 
 ## Optional usage statistics
 
-On the first launch of a build with statistics support, Display Dials asks whether
-to share usage statistics with the developer through TelemetryDeck. This includes
-existing users upgrading from a version without statistics. Nothing is collected
-or sent before consent, and declining does not affect any app features.
+The first interactive launch/opening asks whether to share minimal usage events
+through TelemetryDeck. Nothing is collected or sent before consent, and every app
+feature works after declining. Closing the first prompt counts as declining.
+A quiet login launch defers an undecided prompt until the panel is opened manually.
 
-Use **More options (…) > Usage Statistics… > Share Usage Statistics** to change
-your choice. Turning sharing off discards unsent events, cancels outstanding
-requests where possible, and resets the local random installation identifier.
-It does not remove events already received by TelemetryDeck.
+Change the choice in **More options (…) > Usage Statistics…**. Disabling clears
+unsent events, cancels requests where possible and resets the random local
+identifier; it cannot recall data already received by the service. See the
+[complete event and storage disclosure](docs/privacy.md).
 
-The app sends a small explicit set of usage events, selected update preferences,
-app/macOS versions, timestamps and random identifiers. It does not use automatic
-screen capture, hardware identifiers, or collect file contents or personal contact
-details. Read the [complete data and storage disclosure](docs/privacy.md).
+## Troubleshooting and diagnostics
 
-## Resource use
+Night Shift access uses the private CoreBrightness API. A future macOS change or
+unsupported display configuration can make it unavailable. Other utilities and
+macOS's schedule can override settings. The panel refreshes immediately after app
+actions and on opening, and polls every five seconds while visible; external
+changes can take several seconds to appear. Closing the panel stops this polling.
+The app is intended for direct distribution and is not ready for the Mac App Store.
 
-The warmth effect is handled by macOS. Display Dials polls Night Shift only while
-its panel is visible, every five seconds with one second of timer tolerance.
-User actions and reopening refresh immediately. Changes made by another utility
-can therefore take several seconds to appear in an already open panel.
-Closing the panel stops this polling; Sparkle's update scheduler remains separate.
-
-A short local idle sample recorded about 0.005% of one CPU core and 19.3 MiB of
-physical footprint. These measurements predate optional statistics. They are observations on one machine, not a battery-life
-promise. See the [measurement details and limitations](docs/implementation.md#local-review-2026-11-07).
-
-## Diagnostics and limitations
-
-After building the bundle, these commands read settings without changing Night Shift
-or starting the updater:
+After building, run these read-only checks from the repository root:
 
 ```sh
 app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacOS/DisplayDials"
@@ -138,10 +100,31 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 "$app_binary" --smoke-test --snapshot /tmp/display-dials-panel.png
 ```
 
-Night Shift access uses the private CoreBrightness API. macOS changes can break
-compatibility; the adapter checks method signatures and status layout before use.
-Other Night Shift utilities can compete with setting changes. This is a prototype
-for direct distribution and is not ready for Mac App Store submission.
+These modes do not change Night Shift, start the updater, register login items or
+send statistics. Snapshot writing is best-effort; check that the file exists.
 
-See [implementation and validation](docs/implementation.md) for the code structure,
-and [release operations](docs/releases.md) for signing, packaging, and publication.
+Maintained by Vitaly Terenin. Repository collaborators can report issues through
+[this repository's issue tracker](https://github.com/vitalyterenin/display-dials/issues),
+including the app/macOS versions, reproduction steps and read-only diagnostics.
+The repository is private and currently declares no open-source license.
+
+## Build and further documentation
+
+Building requires Swift 6+, Python 3 and Xcode or Command Line Tools. The first build
+fetches the pinned Sparkle 2.10.1 dependency. From the repository root:
+
+```sh
+bash scripts/test.sh
+bash scripts/build-app.sh
+open "$HOME/Library/Developer/DisplayDials/Display Dials.app"
+```
+
+The default bundle is under `~/Library/Developer/DisplayDials`, and the SwiftPM cache
+is under `~/Library/Developer/DisplayDials/Build`, outside Documents to avoid file
+provider metadata invalidating signatures. `build-app.sh` replaces its generated
+output bundle. Override locations with `DISPLAY_DIALS_OUTPUT_DIR` and
+`DISPLAY_DIALS_BUILD_DIR`.
+
+- [Implementation, test coverage and historical performance samples](docs/implementation.md)
+- [Release operations and future Developer ID integration](docs/releases.md)
+- [Usage statistics and privacy](docs/privacy.md)

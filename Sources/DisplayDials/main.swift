@@ -25,7 +25,6 @@ final class PanelController: NSViewController {
         makeTransport: { TelemetryDeckTransport() }
     )
     private var statisticsPreferences: StatisticsPreferences?
-    private let warmthToggle = NSSwitch()
     private let warmthSlider = WarmthSlider(frame: .zero)
     private var pendingWarmthEvent: UsageEvent?
     private let statusLabel = NSTextField(labelWithString: "")
@@ -56,11 +55,6 @@ final class PanelController: NSViewController {
         heading.spacing = 2
         heading.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        warmthToggle.target = self
-        warmthToggle.action = #selector(toggleWarmth)
-        warmthToggle.setAccessibilityLabel("Night Shift")
-        warmthToggle.controlSize = .small
-
         let more = NSButton(image: NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More options")!,
                             target: self, action: #selector(showOptions(_:)))
         more.isBordered = false
@@ -71,7 +65,7 @@ final class PanelController: NSViewController {
         more.heightAnchor.constraint(equalToConstant: 24).isActive = true
         let headerSpacer = NSView()
         headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let header = NSStackView(views: [heading, headerSpacer, warmthToggle, more])
+        let header = NSStackView(views: [heading, headerSpacer, more])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 10
@@ -86,9 +80,9 @@ final class PanelController: NSViewController {
             self.refresh()
         }
         warmthSlider.setAccessibilityLabel("Display warmth")
-        warmthSlider.toolTip = "Adjust display warmth. The macOS Night Shift schedule is preserved."
+        warmthSlider.toolTip = "Move fully left to turn Night Shift off; choose a higher position to turn it on. The macOS schedule is preserved."
 
-        let cooler = NSTextField(labelWithString: "Cooler")
+        let cooler = NSTextField(labelWithString: "Off")
         let warmer = NSTextField(labelWithString: "Warmer")
         for label in [cooler, warmer] {
             label.font = .systemFont(ofSize: 11)
@@ -148,12 +142,10 @@ final class PanelController: NSViewController {
                                  diagnostic: warmth.diagnostic, error: settingError)
         guard current != lastState else { return }
         lastState = current
-        warmthToggle.isEnabled = available
-        warmthToggle.state = enabled ? .on : .off
-        warmthSlider.isEnabled = available && enabled
+        warmthSlider.isEnabled = available
         if let strength, !warmthSlider.isDragging {
             // Reading system state must never round or commit a setting.
-            warmthSlider.doubleValue = strength
+            warmthSlider.doubleValue = WarmthAdjustment.sliderValue(enabled: enabled, strength: strength)
         }
         statusLabel.textColor = settingError == nil ? .secondaryLabelColor : .systemRed
         if let settingError {
@@ -263,16 +255,14 @@ final class PanelController: NSViewController {
         statisticsPreferences?.present()
     }
 
-    @objc private func toggleWarmth() {
-        let enabled = warmthToggle.state == .on
-        let success = warmth.changeEnabled(enabled)
-        telemetry.record(.nightShiftChanged(enabled: enabled, succeeded: success))
-        report(success)
-    }
-
     @objc private func changeWarmth() {
         let strength = Float(warmthSlider.closestTickMarkValue(toValue: warmthSlider.doubleValue))
-        let success = warmth.changeStrength(strength)
+        let state = warmth.readState()
+        let success = state?["available"]?.boolValue == true && WarmthAdjustment.apply(
+            strength: strength, enabled: state?["enabled"]?.boolValue == true,
+            setStrength: { self.warmth.changeStrength($0) },
+            setEnabled: { self.warmth.changeEnabled($0) }
+        )
         let event = UsageEvent.warmthChanged(position: Int((strength * 9).rounded()) + 1, succeeded: success)
         if warmthSlider.isDragging {
             pendingWarmthEvent = event

@@ -31,7 +31,7 @@ final class StatisticsPreferences: NSWindowController, NSWindowDelegate {
         let details = label("""
         What is sent
         • App launches and panel openings, including how the panel was opened.
-        • Night Shift changes, warmth positions (1–10), and whether changes succeeded.
+        • Final slider positions (1–10, where 1 means Off), and whether changes succeeded.
         • Automatic-update preferences and manual update checks.
         • App version/build, macOS major/minor version, event times, and random installation/session identifiers. The installation identifier is hashed before sending.
 
