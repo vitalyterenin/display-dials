@@ -25,7 +25,7 @@ installations; they are not a count of unique people or a promise of complete an
 | `Statistics.enabled` | Sharing was explicitly enabled; no earlier actions are replayed |
 | `Panel.opened` | `source`: `launch`, `menuBar`, or `reopen` |
 | `NightShift.changed` | Requested `enabled` boolean and `succeeded` boolean, after a user action |
-| `Warmth.changed` | Requested `position` from 1 to 10 and `succeeded` boolean, once on slider release |
+| `Warmth.changed` | Requested `position` from 1 to 10 and `succeeded` boolean, once on drag completion (final requested position/result), or per keyboard/accessibility action |
 | `Updates.preferences` | `automaticChecks` and `automaticInstallation` booleans, on opted-in launch, opt-in, or preference change |
 | `Updates.manualCheck` | User requested an available manual update check |
 

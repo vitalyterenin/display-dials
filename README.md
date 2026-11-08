@@ -17,8 +17,8 @@ The panel also opens on a normal launch. Automatic launch at login keeps the app
 in the menu bar without opening the panel.
 
 - **Night Shift switch:** enables or disables the system setting.
-- **Warmth slider:** selects one of 10 positions from Cooler to Warmer. A change
-  is applied when you release the slider. The percentage shows system strength,
+- **Warmth slider:** selects one of 10 positions from Cooler to Warmer. Each new position
+  is applied immediately while dragging; you do not need to release the slider. The percentage shows system strength,
   not a calibrated color temperature.
 - **Status:** shows `On · …%`, `Off`, or `Unavailable`. On reflects the system's
   enabled setting; it is not a measurement of the screen's current color.

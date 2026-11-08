@@ -26,7 +26,8 @@ final class PanelController: NSViewController {
     )
     private var statisticsPreferences: StatisticsPreferences?
     private let warmthToggle = NSSwitch()
-    private let warmthSlider = NSSlider(value: 0.5, minValue: 0, maxValue: 1, target: nil, action: nil)
+    private let warmthSlider = WarmthSlider(frame: .zero)
+    private var pendingWarmthEvent: UsageEvent?
     private let statusLabel = NSTextField(labelWithString: "")
     private var settingError: String?
     private var timer: Timer?
@@ -77,10 +78,13 @@ final class PanelController: NSViewController {
 
         warmthSlider.target = self
         warmthSlider.action = #selector(changeWarmth)
-        warmthSlider.numberOfTickMarks = 10
-        warmthSlider.allowsTickMarkValuesOnly = true
-        // Commit once on release using the native slider's selectable positions.
-        warmthSlider.isContinuous = false
+        warmthSlider.onDragEnded = { [weak self] in
+            guard let self else { return }
+            if let event = self.pendingWarmthEvent { self.telemetry.record(event) }
+            self.pendingWarmthEvent = nil
+            self.lastState = nil
+            self.refresh()
+        }
         warmthSlider.setAccessibilityLabel("Display warmth")
         warmthSlider.toolTip = "Adjust display warmth. The macOS Night Shift schedule is preserved."
 
@@ -147,7 +151,7 @@ final class PanelController: NSViewController {
         warmthToggle.isEnabled = available
         warmthToggle.state = enabled ? .on : .off
         warmthSlider.isEnabled = available && enabled
-        if let strength {
+        if let strength, !warmthSlider.isDragging {
             // Reading system state must never round or commit a setting.
             warmthSlider.doubleValue = strength
         }
@@ -269,7 +273,12 @@ final class PanelController: NSViewController {
     @objc private func changeWarmth() {
         let strength = Float(warmthSlider.closestTickMarkValue(toValue: warmthSlider.doubleValue))
         let success = warmth.changeStrength(strength)
-        telemetry.record(.warmthChanged(position: Int((strength * 9).rounded()) + 1, succeeded: success))
+        let event = UsageEvent.warmthChanged(position: Int((strength * 9).rounded()) + 1, succeeded: success)
+        if warmthSlider.isDragging {
+            pendingWarmthEvent = event
+        } else {
+            telemetry.record(event)
+        }
         report(success)
     }
 

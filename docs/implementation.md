@@ -7,6 +7,7 @@
 | `Sources/DisplayDials/main.swift` | Menu bar item, panel, More options menu, and diagnostic entry points |
 | `Sources/NightShiftBridge/` | Objective-C adapter for the private Night Shift API |
 | `Sources/DisplayDials/UpdateController.swift` | Sparkle startup, availability, and preferences |
+| `Sources/DisplayDials/WarmthSlider.swift` | Continuous native slider, tick deduplication and drag completion |
 | `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
 | `Sources/DisplayDials/StatisticsPreferences.swift` | Consent and statistics settings window |
 | `Sources/UsageTelemetry/` | Consent gate, typed events, memory-only batches and TelemetryDeck transport |
@@ -31,7 +32,12 @@ Reopening the application also shows the panel if it is hidden.
 
 `PanelController` uses stock `NSSwitch`, `NSSlider`, `NSButton`, `NSTextField`, and
 `NSStackView` controls with system fonts and colors. The slider has 10 tick positions
-including both endpoints. It commits once on release. The displayed percentage
+including both endpoints. It applies each new tick immediately while dragging. Repeated mouse events
+within the same tick are suppressed by `WarmthSlider`; returning to an earlier
+tick applies it again. System reads do not reposition the knob during tracking.
+After tracking ends, the slider reconciles with the system and the final requested
+position/success is recorded once through the existing consent gate. Keyboard and
+accessibility changes apply immediately and record their individual actions. The displayed percentage
 uses the system strength; reading an intermediate value does not write a rounded
 value back to macOS.
 
@@ -239,3 +245,11 @@ This is not an App Store eligibility assessment; the app still uses private APIs
 When changing menu items, also open More options normally and confirm that all
 current commands through Quit are visible without scrolling on a screen with
 sufficient space. Do not infer visibility from the accessibility item list alone.
+
+### Live slider regression check
+
+`WarmthSliderTests.swift` exercises the production slider's native mouseDown
+lifecycle with an isolated tracking cell. It requires changed-tick actions before
+tracking ends, suppresses duplicate events within a tick, verifies reverse movement,
+and checks that drag completion happens once. Unchanged gestures and non-drag
+keyboard/accessibility action delivery are covered without changing macOS settings.
