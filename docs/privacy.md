@@ -10,7 +10,8 @@ status command uses local distributed notifications; it does not contact a serve
 
 Sparkle requests the signed update feed from this repository's GitHub Pages site
 and downloads updates from its GitHub Releases. Automatic update checks and
-installation can be changed in More options. Sparkle system profiling is disabled.
+installation can be changed in **More options (…) > Updates**. Sparkle system
+profiling is disabled.
 These network requests expose the connection's IP address to the hosting service.
 
 Removing statistics support does not delete data received by the former service

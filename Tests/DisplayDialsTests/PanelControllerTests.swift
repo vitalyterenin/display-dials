@@ -95,6 +95,28 @@ struct PanelControllerTests {
         _ = panel.warmthSlider.sendAction(panel.warmthSlider.action, to: panel.warmthSlider.target)
     }
 
+    @Test func updatesMenuFollowsReleaseSettingsOrder() throws {
+        let controller = panel(FakeNightShift(enabled: false, strength: 0.5))
+        let menu = controller.makeOptionsMenu()
+        let updates = try #require(menu.item(withTitle: "Updates"))
+        #expect(updates.isEnabled)
+        let submenu = try #require(updates.submenu)
+        let items = submenu.items.filter { !$0.isSeparatorItem }
+        #expect(items.map(\.title) == [
+            "Check for Updates…",
+            "Automatically Check for Updates",
+            "Automatically Install Updates",
+            "Version \(AppIdentity.version)"
+        ])
+        #expect(items.prefix(3).allSatisfy { $0.target === controller })
+        #expect(items.compactMap { $0.action.map(NSStringFromSelector) } == [
+            "checkForUpdates:", "changeAutomaticChecks:", "changeAutomaticInstallation:"
+        ])
+        let version = try #require(items.last)
+        #expect(!version.isEnabled)
+        #expect(version.action == nil)
+    }
+
     @Test func offDisablesExternalNearZeroWithoutWritingOnRead() {
         for strength in [0.0, 0.01, 0.05, 0.06] {
             let client = FakeNightShift(enabled: true, strength: strength)
@@ -144,10 +166,16 @@ struct PanelControllerTests {
         #expect(client.writes == ["strength"])
         #expect(!client.enabled && client.strength == 0.7)
         #expect(panel.warmthSlider.doubleValue == 0)
+        let firstError = panel.statusLabel.stringValue
+        #expect(firstError == "Could not apply setting. Try again.")
+        action(panel, value: 5.0 / 9)
+        #expect(client.writes == ["strength", "strength"])
+        #expect(panel.warmthSlider.doubleValue == 0)
+        #expect(panel.statusLabel.stringValue == firstError)
         client.failStrength = false
         client.failEnabled = true
         action(panel, value: 4.0 / 9)
-        #expect(client.writes == ["strength", "strength", "enable"])
+        #expect(client.writes == ["strength", "strength", "strength", "enable"])
         #expect(!client.enabled && abs(client.strength - 4.0 / 9) < 0.00001)
         #expect(panel.warmthSlider.doubleValue == 0)
         client.failEnabled = false

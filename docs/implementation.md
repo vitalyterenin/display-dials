@@ -47,7 +47,7 @@ Menu bar / reopen / interactive launch
 Native slider action
   -> PanelController.changeWarmth -> fresh availability read
      -> WarmthAdjustment.apply -> DDWarmthClient writes
-     -> report -> fresh read -> label and knob reconciliation
+     -> record result -> fresh read -> panel update and knob reconciliation
 
 More options -> UpdateController / LoginItemController
 --status -> distributed notification -> running app snapshot -> JSON response
@@ -67,8 +67,8 @@ exercise the complete read/action/reconciliation path without changing macOS set
 | State | Owner and lifetime | Contract |
 | --- | --- | --- |
 | Enabled, active, strength and schedule | macOS, beyond the app process | Reads never write; Off preserves remembered strength; the app does not own the schedule |
-| Last rendered state and setting error | `PanelController`, process lifetime | Refresh skips identical UI state; every attempted write invalidates that cache; only a successful later action clears a setting error |
-| Drag deduplication and reconciliation | `WarmthSlider` and `PanelController`, one gesture | Live changed ticks apply immediately; completion forces reconciliation |
+| Last rendered state and setting error | `PanelController`, process lifetime | Identical state skips label and availability updates. A successful later action clears a setting error |
+| Drag deduplication and reconciliation | `WarmthSlider` and `PanelController`, one gesture | Changed ticks apply immediately. The knob reconciles on drag completion and after non-drag actions, even if the last rendered state still matches |
 | Login registration | `SMAppService.mainApp` | No duplicate app preference; read OS status each time; change only on explicit menu action |
 | Automatic update choices | Sparkle preferences | Generated bundle defaults apply only when no saved user choice overrides them |
 
@@ -101,12 +101,10 @@ value back to macOS.
 
 More options opens a native `NSMenu`, populated from the running state each time:
 
-1. An informational app name/version row.
-2. Launch at Login, with a System Settings action when approval is required.
-3. Check for Updates…
-4. Check for Updates Automatically.
-5. Install Updates Automatically.
-6. Quit Display Dials.
+1. Launch at Login, with a System Settings action when approval is required.
+2. Updates, a submenu containing Check for Updates…, Automatically Check for
+   Updates, Automatically Install Updates, and the read-only Version row.
+3. Quit Display Dials.
 
 `OptionsMenuPresentation` converts the button's bounds through window coordinates
 to a screen point and opens the menu with `in: nil`. This disconnects menu sizing
@@ -164,9 +162,11 @@ is busy. Own control actions refresh immediately.
 
 Before installing a visibility timer, the controller invalidates the previous one.
 Closing the panel invalidates it and clears its reference. Polls execute on the
-main run loop without creating a Task. An unchanged state skips UI property writes.
-After user actions, cached state is invalidated so controls are restored from the
-system even if the same write error occurs repeatedly.
+main run loop without creating a Task. An unchanged poll skips UI property writes.
+Native actions can move the knob before the controller reads macOS. Refresh can
+therefore reconcile the knob independently of the cached label and availability.
+During tracking the slider keeps the requested position, and completion reads the
+system again to restore the observed position even after repeated write failures.
 
 The app has no continuous animation/rendering loop, sleep-prevention assertion,
 or explicit App Nap opt-out. Sparkle's scheduler is independent of the panel timer;
@@ -198,7 +198,8 @@ version-row and menu-confinement changes and are not a profile of every revision
 `UpdateController` owns Sparkle's `SPUStandardUpdaterController`. It starts only
 inside an app bundle containing the feed URL and public key, outside the diagnostics
 and smoke-test paths. Running the raw SwiftPM executable does not start the updater.
-The More options menu reads current preferences and availability whenever it opens.
+The Updates submenu reflects current preferences and availability each time
+More options opens.
 
 Generated bundle defaults enable automatic checks and automatic installation;
 existing user preferences may override them. Checks use a four-hour interval while
@@ -343,7 +344,9 @@ writes, not a claim of compatibility with every macOS/display configuration.
 point. `PanelControllerTests` uses the real panel/slider, a synthetic tracking cell
 and a fake Night Shift client. It verifies external near-zero Off, unchanged
 disabled gestures, tick deduplication and reversal, failed writes and recovery,
-deferred knob reconciliation and immediate non-drag actions. Synthetic mouse
+deferred knob reconciliation and immediate non-drag actions. Two consecutive
+rejected non-drag moves must each restore the knob even when the error and system
+state are identical. Synthetic mouse
 coordinates are converted from the slider into window coordinates, and the cell
 preserves the controller's action/target.
 Non-drag tests call `sendAction`; they do not simulate physical keyboard or

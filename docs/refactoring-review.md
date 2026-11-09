@@ -1,6 +1,8 @@
-# Refactoring review and implementation — 2026-11-08
+# Refactoring review and implementation
 
-> Historical review of the earlier implementation. Version 0.6.10 removes usage
+The [November 10 panel follow-up](#panel-reconciliation--2026-11-10) appears below.
+
+> Historical review of the November 8 implementation. Version 0.6.10 removes usage
 > telemetry, its consent window, event tests and build configuration. References to those components and test counts below describe
 > the reviewed baseline. Current behavior is documented in `implementation.md`
 > and `privacy.md`.
@@ -268,3 +270,36 @@ a later successful action. `--status` still has no installation selector or
 authenticated responder identity; continuity checks should use one running copy.
 Release publication and installed-app checks are recorded separately above;
 minimum-platform validation remains outside this host's coverage.
+
+## Panel reconciliation — 2026-11-10
+
+The review started from clean `main` at
+`05d6401ace89ba14cf8eb8e98111e9fcaea17697` (0.6.10, build 20). The pass traced
+AppKit actions and polling through the Swift client and the Objective-C bridge,
+and reviewed the diagnostic and release entry points and their existing tests.
+The implementation focused on `PanelController` and its existing tests.
+
+`PanelController.refresh` used one cache for two responsibilities. It skipped
+identical labels and availability during polling, but action and drag-completion
+paths invalidated it because AppKit could move the knob independently of macOS.
+This rewrote the label and availability controls even when the system snapshot
+and error were identical. The controller now reconciles the knob on
+request and updates the other controls only when their cached state changes.
+The same refresh reads current system state in both cases. During a drag the
+knob follows the requested tick, and completion reconciles it with macOS.
+
+Verification on Apple Silicon with macOS 26.7.2:
+
+- `scripts/test.sh` passed before and after the change, including 10 Swift tests,
+  native menu geometry, slider tracking and Off/on write ordering. The extended
+  non-drag test passed on both versions. Two rejected writes with identical
+  readback and error state each restored the knob, and a later action recovered.
+- The 43 Python tests and `scripts/release.py validate` passed. The publication
+  tests use fixtures and a fake GitHub client.
+- `scripts/build-app.sh` produced a temporary ad hoc signed arm64 bundle.
+  `codesign --verify --deep --strict`, `--diagnostics`, and `--smoke-test` passed.
+  The smoke test produced a 576 × 232 PNG of the panel.
+
+Setting writes were simulated through the existing test double. The bundled app
+checks used read-only system diagnostics and synthetic input exercised the slider
+in the automated tests. This pass provides functional verification on this host.
