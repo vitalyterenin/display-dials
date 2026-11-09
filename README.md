@@ -30,8 +30,7 @@ application reopen shows it; automatic launch at login stays quietly in the menu
   Keyboard and accessibility changes also apply immediately.
 - **Status:** `On · …%`, `Off`, `Unavailable`, or an error. The percentage is the
   system's normalized warmth, not calibrated kelvin or a brightness measurement.
-- **More options (…):** installed version, Launch at Login, update commands and
-  preferences, and Quit. The version row is informational.
+- **More options (…):** Launch at Login, Updates, and Quit Display Dials.
 
 The slider remains usable when Night Shift is off. It is disabled only when the
 system API or Night Shift is unavailable. Hover over the status for details.
@@ -56,10 +55,10 @@ inside a read-only DMG and in diagnostic/smoke modes.
 
 ## Updates
 
-**Check for Updates…** checks immediately. Automatic checks and automatic
-installation default to enabled; saved user choices take precedence. Both can be
-changed in More options. Installation is disabled there while automatic checks
-are off.
+Open **More options (…) > Updates**. **Check for Updates…** checks immediately.
+**Automatically Check for Updates** and **Automatically Install Updates** default
+to enabled and respect saved choices. The installation control is disabled while
+automatic checks are off. **Version** shows the running app version.
 
 Sparkle checks the [signed stable feed](https://vitalyterenin.github.io/display-dials/appcast.xml)
 on a four-hour schedule while the app runs. Installation can wait for quit or
@@ -139,7 +138,7 @@ output bundle. Override locations with `DISPLAY_DIALS_OUTPUT_DIR` and
 `DISPLAY_DIALS_BUILD_DIR`.
 
 - [Implementation, test coverage and historical performance samples](docs/implementation.md)
-- [Refactoring findings, implemented changes and validation (2026-11-08)](docs/refactoring-review.md)
+- [Refactoring findings, implemented changes and validation](docs/refactoring-review.md)
 - [Release operations and persistent signing](docs/releases.md)
 - [Privacy and network activity](docs/privacy.md)
 

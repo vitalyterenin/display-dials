@@ -60,9 +60,7 @@ final class PanelController: NSViewController {
         warmthSlider.target = self
         warmthSlider.action = #selector(changeWarmth)
         warmthSlider.onDragEnded = { [weak self] in
-            guard let self else { return }
-            self.lastState = nil
-            self.refresh()
+            self?.refresh(reconcileSlider: true)
         }
         warmthSlider.setAccessibilityLabel("Display warmth")
         warmthSlider.toolTip = "Move fully left to turn Night Shift off; choose a higher position to turn it on. The macOS schedule is preserved."
@@ -118,21 +116,22 @@ final class PanelController: NSViewController {
         timer = nil
     }
 
-    func refresh() {
+    func refresh(reconcileSlider: Bool = false) {
         let snapshot = warmth.readSnapshot()
         let available = snapshot.available
         let enabled = snapshot.state?.enabled == true
         let strength = snapshot.state?.strength
         let current = PanelState(available: available, enabled: enabled, strength: strength,
                                  diagnostic: snapshot.diagnostic, error: settingError)
-        guard current != lastState else { return }
+        let stateChanged = current != lastState
+        // Native actions can move the knob even when the system state stays the same.
+        if (stateChanged || reconcileSlider), !warmthSlider.isDragging, let strength {
+            warmthSlider.doubleValue = WarmthAdjustment.sliderValue(enabled: enabled, strength: strength)
+        }
+        guard stateChanged else { return }
         lastState = current
         warmthSlider.isEnabled = available
         warmthSlider.allowsInitialOffAction = available && enabled
-        if let strength, !warmthSlider.isDragging {
-            // Reading system state must never round or commit a setting.
-            warmthSlider.doubleValue = WarmthAdjustment.sliderValue(enabled: enabled, strength: strength)
-        }
         statusLabel.textColor = settingError == nil ? .secondaryLabelColor : .systemRed
         if let settingError {
             statusLabel.stringValue = settingError
@@ -149,11 +148,12 @@ final class PanelController: NSViewController {
     }
 
     @objc private func showOptions(_ sender: NSButton) {
+        OptionsMenuPresentation.popUp(makeOptionsMenu(), from: sender)
+    }
+
+    func makeOptionsMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        let version = menu.addItem(withTitle: "\(AppIdentity.name) · Version \(AppIdentity.version)", action: nil, keyEquivalent: "")
-        version.isEnabled = false
-        menu.addItem(.separator())
         let launch = menu.addItem(
             withTitle: loginItem.requiresApproval ? "Launch at Login (Approval Required)" : "Launch at Login",
             action: #selector(changeLaunchAtLogin(_:)), keyEquivalent: "")
@@ -168,21 +168,32 @@ final class PanelController: NSViewController {
             settings.target = self
         }
         menu.addItem(.separator())
+        let updatesItem = menu.addItem(withTitle: "Updates", action: nil, keyEquivalent: "")
+        updatesItem.submenu = makeUpdatesMenu()
+        menu.addItem(.separator())
+        let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.target = NSApp
+        return menu
+    }
+
+    private func makeUpdatesMenu() -> NSMenu {
+        let menu = NSMenu(title: "Updates")
+        menu.autoenablesItems = false
         let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
         check.target = self
         check.isEnabled = updates.canCheck
-        let automaticChecks = menu.addItem(withTitle: "Check for Updates Automatically", action: #selector(changeAutomaticChecks(_:)), keyEquivalent: "")
+        let automaticChecks = menu.addItem(withTitle: "Automatically Check for Updates", action: #selector(changeAutomaticChecks(_:)), keyEquivalent: "")
         automaticChecks.target = self
         automaticChecks.isEnabled = updates.isConfigured
         automaticChecks.state = updates.automaticallyChecks ? .on : .off
-        let automaticInstallation = menu.addItem(withTitle: "Install Updates Automatically", action: #selector(changeAutomaticInstallation(_:)), keyEquivalent: "")
+        let automaticInstallation = menu.addItem(withTitle: "Automatically Install Updates", action: #selector(changeAutomaticInstallation(_:)), keyEquivalent: "")
         automaticInstallation.target = self
         automaticInstallation.isEnabled = updates.isConfigured && updates.automaticallyChecks
         automaticInstallation.state = updates.automaticallyInstalls ? .on : .off
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quit.target = NSApp
-        OptionsMenuPresentation.popUp(menu, from: sender)
+        let version = menu.addItem(withTitle: "Version \(AppIdentity.version)", action: nil, keyEquivalent: "")
+        version.isEnabled = false
+        return menu
     }
 
     @objc private func changeLaunchAtLogin(_ sender: NSMenuItem) {
@@ -233,14 +244,8 @@ final class PanelController: NSViewController {
             setStrength: { self.warmth.changeStrength($0) },
             setEnabled: { self.warmth.changeEnabled($0) }
         )
-        report(success)
-    }
-
-    private func report(_ success: Bool) {
         settingError = success ? nil : "Could not apply setting. Try again."
-        // Restore controls from macOS even if a repeated write failed identically.
-        lastState = nil
-        refresh()
+        refresh(reconcileSlider: true)
     }
 }
 

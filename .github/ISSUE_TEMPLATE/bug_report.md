@@ -5,7 +5,7 @@ about: Report a reproducible problem with Display Dials.
 
 ## Environment
 
-- Display Dials version (shown in More options):
+- Display Dials version (shown in More options > Updates):
 - macOS version:
 - Mac model and display setup (built-in or external displays):
 - Installation source (release DMG or source build):
