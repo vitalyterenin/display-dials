@@ -1,7 +1,8 @@
 # Display Dials
 
-A macOS menu bar app for controlling Night Shift with one warmth slider.
-Move fully left to turn it off; move right to turn it on and adjust its warmth.
+A macOS menu bar app for controlling Night Shift and switching light/dark appearance.
+Move the warmth slider fully left to turn Night Shift off; move right to turn it on
+and adjust its warmth. Press **Option–Command–N (⌥⌘N)** to toggle the macOS appearance.
 
 ![Display Dials panel with a single slider from Off to Warmer and a More options button](docs/assets/panel.png)
 
@@ -9,8 +10,9 @@ Move fully left to turn it off; move right to turn it on and adjust its warmth.
 
 [Download DisplayDials.dmg](https://github.com/vitalyterenin/display-dials/releases/latest/download/DisplayDials.dmg)
 
-Requires an **Apple Silicon Mac with macOS 13 or later** and available Night Shift
-support. The permanent download always contains the current release.
+Requires an **Apple Silicon Mac with macOS 13 or later**. The warmth slider also
+requires available Night Shift support; appearance switching works independently.
+The permanent download always contains the current release.
 
 1. Open the DMG and drag **Display Dials.app** onto **Applications**.
 2. Eject the disk image and open the installed app. A writable location such as
@@ -30,7 +32,8 @@ application reopen shows it; automatic launch at login stays quietly in the menu
   Keyboard and accessibility changes also apply immediately.
 - **Status:** `On · …%`, `Off`, `Unavailable`, or an error. The percentage is the
   system's normalized warmth, not calibrated kelvin or a brightness measurement.
-- **More options (…):** Launch at Login, Updates, and Quit Display Dials.
+- **More options (…):** Toggle Light / Dark Appearance, Launch at Login, Updates,
+  and Quit Display Dials.
 
 The slider remains usable when Night Shift is off. It is disabled only when the
 system API or Night Shift is unavailable. Hover over the status for details.
@@ -41,6 +44,22 @@ when the app quits; macOS schedules and other utilities can subsequently change
 its enabled state. Turning it off leaves macOS's remembered warmth intact. Opening
 or polling the panel never changes settings or rounds an external strength value.
 Display Dials has no brightness adjustment, per-monitor settings or custom schedule.
+
+## Switch the macOS appearance
+
+Press **Option–Command–N (⌥⌘N)** to toggle the system light/dark appearance while
+Display Dials is running, including when its panel is closed or another app is
+active. The physical N key works with other keyboard layouts too. Holding the
+key switches once on release; overlapping requests during a change are ignored.
+You can also choose **More options (…) > Toggle Light / Dark Appearance**.
+This changes macOS appearance independently of Night Shift.
+
+On first use, allow Display Dials to control **System Events** in the macOS
+Automation prompt. If denied, enable it in **System Settings > Privacy & Security
+> Automation**, then try again. Accessibility and Input Monitoring are not needed.
+No permission is requested merely by launching the app or running diagnostics.
+If another app owns the shortcut, the menu shows **⌥⌘N Unavailable — Retry**;
+release the combination in that app and retry, or use the menu action.
 
 ## Launch at login
 
@@ -68,8 +87,9 @@ GitHub Pages hosts the signed feed. Sparkle system profiling is disabled.
 
 From **0.6.8**, the app and updater keep the same certificate-bound signing
 identity across releases. Users do not install or trust a certificate. Display
-Dials does not request Accessibility, Input Monitoring or Screen Recording;
-optional launch-at-login approval is managed by macOS as described above.
+Dials does not request Accessibility, Input Monitoring or Screen Recording.
+Appearance switching requests Automation access to System Events; optional
+launch-at-login approval is managed by macOS as described above.
 
 The app displays its running bundle version. Source metadata in
 [release.json](release.json) does not prove that a release has been published.
@@ -110,7 +130,8 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 ```
 
 `--status` queries an already running 0.6.8-or-later app for its own Night Shift,
-login-item and update state. It does not launch the app. Other diagnostic commands
+login-item and update state. From 0.6.12 it also reports shortcut registration and
+appearance-change errors. It does not launch the app. Other diagnostic commands
 run in the caller's context.
 
 These modes do not change Night Shift, start the updater or register login items.

@@ -58,13 +58,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "loginItemStatus": controller.loginItem.status.rawValue,
                     "loginItemEnabled": controller.loginItem.status == .enabled,
                     "loginItemRequiresApproval": controller.loginItem.requiresApproval,
+                    "appearanceShortcutRegistered": controller.appearanceShortcut.isRegistered,
+                    "appearanceShortcutError": controller.appearanceShortcut.registrationError.map(String.init) ?? "",
+                    "appearanceChangeInProgress": controller.appearance.isChanging,
+                    "appearanceError": controller.appearance.lastError ?? "",
                     "automaticChecks": controller.updates.automaticallyChecks,
                     "automaticInstallation": controller.updates.automaticallyInstalls
                 ]
             }
             controller.updates.start()
+            controller.registerAppearanceShortcut()
             if !launchedAtLogin { showPanel() }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        (popover.contentViewController as? PanelController)?.appearanceShortcut.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
