@@ -6,6 +6,8 @@ final class PanelController: NSViewController {
     let warmth: any NightShiftControlling
     let updates = UpdateController()
     let loginItem = LoginItemController()
+    let appearance = AppearanceController()
+    let appearanceShortcut = AppearanceShortcut()
     let warmthSlider = WarmthSlider(frame: .zero)
     let statusLabel = NSTextField(labelWithString: "")
     private var settingError: String?
@@ -154,6 +156,17 @@ final class PanelController: NSViewController {
     func makeOptionsMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        let appearanceItem = menu.addItem(withTitle: "Toggle Light / Dark Appearance (⌥⌘N)",
+            action: #selector(toggleAppearance), keyEquivalent: "")
+        appearanceItem.target = self
+        appearanceItem.isEnabled = !appearance.isChanging && !CommandLine.arguments.contains("--smoke-test")
+        appearanceItem.toolTip = "Switch the macOS appearance. Option–Command–N works globally while Display Dials is running."
+        if let error = appearanceShortcut.registrationError {
+            let unavailable = menu.addItem(withTitle: "⌥⌘N Unavailable — Retry", action: #selector(registerAppearanceShortcut), keyEquivalent: "")
+            unavailable.target = self
+            unavailable.toolTip = "Another app may be using this shortcut. Release it there, then retry. macOS error: \(error)."
+        }
+        menu.addItem(.separator())
         let launch = menu.addItem(
             withTitle: loginItem.requiresApproval ? "Launch at Login (Approval Required)" : "Launch at Login",
             action: #selector(changeLaunchAtLogin(_:)), keyEquivalent: "")
@@ -174,6 +187,25 @@ final class PanelController: NSViewController {
         let quit = menu.addItem(withTitle: "Quit Display Dials", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         return menu
+    }
+
+    @objc func registerAppearanceShortcut() {
+        appearanceShortcut.start { [weak self] in self?.toggleAppearance() }
+    }
+
+    @objc private func toggleAppearance() {
+        Task { @MainActor in
+            do {
+                try await appearance.toggle()
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Could Not Change Appearance"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "OK")
+                NSApp.activate(ignoringOtherApps: true)
+                alert.runModal()
+            }
+        }
     }
 
     private func makeUpdatesMenu() -> NSMenu {

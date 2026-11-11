@@ -188,6 +188,9 @@ not Developer ID signed or notarized; first downloaded launch may require
 four-hour checks while running and respects saved update preferences.
 
 Display Dials does not request Accessibility, Input Monitoring or Screen Recording.
+From 0.6.12, appearance switching requests Automation permission for System Events
+only on explicit action. Preserve `NSAppleEventsUsageDescription` and verify this
+grant in the installed app's own context before claiming permission continuity.
 Do not add those permissions as a signing workaround or claim their persistence
 was tested. Night Shift uses CoreBrightness and startup uses optional
 `SMAppService.mainApp` registration. During a legacy identity transition, handle

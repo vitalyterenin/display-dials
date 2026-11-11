@@ -14,6 +14,8 @@
 | `Sources/DisplayDials/WarmthSlider.swift` | Continuous native slider, tick deduplication and drag completion |
 | `Sources/DisplayDials/OptionsMenuPresentation.swift` | Screen-coordinate menu anchor, independent of popover bounds |
 | `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
+| `Sources/DisplayDials/AppearanceShortcut.swift` | Fixed global Option–Command–N registration, release dispatch and conflict reporting |
+| `Sources/DisplayDials/AppearanceController.swift` | Asynchronous System Events appearance toggle, readback and Automation errors |
 | `Resources/AppIcon.png` | Approved transparent application icon; build generates all standard and Retina ICNS sizes |
 | `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
 | `release.json` | Version, increasing build number, feed/download URLs, application ID, and public update key |
@@ -34,7 +36,7 @@ The executable entry point handles `--status` first, then `--diagnostics`, then
 the AppKit application path (including `--smoke-test`). `AppDelegate` owns the
 status item, transient popover and status responder. The popover owns its
 `PanelController`; that controller owns the Night Shift client, updater, login-item
-adapter and visible-panel timer. These Swift controllers run on the main actor.
+adapter, appearance controller, global shortcut and visible-panel timer. These Swift controllers run on the main actor.
 The Objective-C bridge separately rejects invocations off the main thread.
 
 The main control flow is:
@@ -50,6 +52,7 @@ Native slider action
      -> record result -> fresh read -> panel update and knob reconciliation
 
 More options -> UpdateController / LoginItemController
+Option–Command–N / More options -> AppearanceController -> osascript -> System Events
 --status -> distributed notification -> running app snapshot -> JSON response
 ```
 
@@ -101,10 +104,11 @@ value back to macOS.
 
 More options opens a native `NSMenu`, populated from the running state each time:
 
-1. Launch at Login, with a System Settings action when approval is required.
-2. Updates, a submenu containing Check for Updates…, Automatically Check for
+1. Toggle Light / Dark Appearance (⌥⌘N), with a shortcut retry row if registration failed.
+2. Launch at Login, with a System Settings action when approval is required.
+3. Updates, a submenu containing Check for Updates…, Automatically Check for
    Updates, Automatically Install Updates, and the read-only Version row.
-3. Quit Display Dials.
+4. Quit Display Dials.
 
 `OptionsMenuPresentation` converts the button's bounds through window coordinates
 to a screen point and opens the menu with `in: nil`. This disconnects menu sizing
@@ -114,6 +118,31 @@ rectangle alone did not reliably prevent clipping when the button was inside a
 popover. Update commands reflect
 Sparkle availability; automatic installation is disabled in the menu while automatic
 checking is off. The version row is disabled deliberately because it has no action.
+
+## System appearance and global shortcut
+
+`AppearanceShortcut` registers the physical N key with Option and Command through
+Carbon's `RegisterEventHotKey`. Exclusive registration reports conflicts rather
+than sharing the key with another app. The application event handler accepts only
+its own identifier and key-release event, giving one action per held gesture.
+Registration starts only on normal launches and is removed on application exit.
+It does not monitor general keyboard input or require Accessibility/Input Monitoring.
+The menu action deliberately has no separate AppKit key equivalent, avoiding a
+second toggle from the same gesture while the app is active.
+
+`AppearanceController` allows one request at a time and runs Apple's fixed
+`/usr/bin/osascript` executable in a detached task. Its constant script asks
+System Events to invert `appearance preferences.dark mode` and reads the property
+back before reporting success. Apple events have a 15-second timeout. No shell,
+downloaded code, private appearance API or preference-file edit is used.
+Automation denial produces recovery instructions; other failures show a native
+alert. The app's Info.plist includes `NSAppleEventsUsageDescription`, and macOS
+requests permission only when a user invokes the action. Diagnostics and smoke
+launches do not register the shortcut or invoke System Events.
+
+This path changes system appearance independently of Night Shift. It does not
+add appearance scheduling or per-app themes. `--status` reports registration,
+registration error, in-progress state and the latest appearance error.
 
 ## Night Shift adapter
 
@@ -269,13 +298,16 @@ app_binary="$HOME/Library/Developer/DisplayDials/Display Dials.app/Contents/MacO
 `test.sh` builds a debug executable, runs `DisplayDialsTests`, prints Night Shift
 diagnostics and initializes the UI, then exercises native menu geometry, live
 slider tracking and the isolated Off/on write-order helper. These checks do not
-write Night Shift, register login items or start the updater. Menu geometry tests
+write Night Shift or system appearance, register login items or start the updater.
+Appearance tests briefly register the global shortcut and remove it on completion.
+Menu geometry tests
 briefly open their own popover/menu. The build script creates and signs the
 release bundle and verifies its code signature.
 
 `--status` queries the already running app through local distributed notifications,
 reporting its own version/build, Night Shift availability/state, native login-item
-status and update preferences. It does not start another UI or change settings.
+status, update preferences and appearance-shortcut/error state. It does not start
+another UI or change settings.
 A two-second timeout reports that no compatible app is running. This avoids
 mistaking a trusted diagnostic caller's context for the app's.
 
@@ -357,6 +389,12 @@ install one polling timer and disappearance stops reads.
 and exercises ordinary failures, invalid numbers, unavailable state and recovery.
 It verifies post-read metadata and the existing state JSON representation. These
 tests do not establish private CoreBrightness compatibility on other macOS versions.
+
+`AppearanceTests` exercises failure recovery and overlapping requests with an
+injected runner. It also registers the real shortcut, verifies exclusive conflicts,
+dispatches synthetic Carbon release events and checks unregister/re-register
+behavior. If an external app already owns the key, it checks the explicit error
+instead. These are not physical keyboard or Automation-permission continuity tests.
 
 ## Privacy
 

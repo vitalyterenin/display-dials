@@ -56,6 +56,7 @@ def write_plist(path):
         CFBundleShortVersionString=data['version'],
         CFBundleVersion=data['build'], LSMinimumSystemVersion='13.0',
         LSUIElement=True, NSHighResolutionCapable=True,
+        NSAppleEventsUsageDescription='Display Dials uses System Events to switch between the light and dark macOS appearance when you press Option–Command–N or choose Toggle Light / Dark Appearance.',
         SUFeedURL=data['feedURL'], SUPublicEDKey=data['publicEDKey'],
         SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=True,
         SUScheduledCheckInterval=14400, SUEnableSystemProfiling=False,
