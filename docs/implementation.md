@@ -14,8 +14,9 @@
 | `Sources/DisplayDials/WarmthSlider.swift` | Continuous native slider, tick deduplication and drag completion |
 | `Sources/DisplayDials/OptionsMenuPresentation.swift` | Screen-coordinate menu anchor, independent of popover bounds |
 | `Sources/DisplayDials/LoginItemController.swift` | Native macOS login-item registration, status, and launch detection |
-| `Sources/DisplayDials/AppearanceShortcut.swift` | Fixed global Option–Command–N registration, release dispatch and conflict reporting |
+| `Sources/DisplayDials/AppearanceShortcut.swift` | Fixed global Option–Command–N registration, press dispatch, repeat suppression and conflict reporting |
 | `Sources/DisplayDials/AppearanceController.swift` | Asynchronous System Events appearance toggle, readback and Automation errors |
+| `Sources/DisplayDials/SystemAppearanceClient.swift` | Typed System Events get/set Apple events and reply validation |
 | `Resources/AppIcon.png` | Approved transparent application icon; build generates all standard and Retina ICNS sizes |
 | `Resources/PrivacyInfo.xcprivacy` | App privacy manifest, included in release bundles |
 | `release.json` | Version, increasing build number, feed/download URLs, application ID, and public update key |
@@ -52,7 +53,7 @@ Native slider action
      -> record result -> fresh read -> panel update and knob reconciliation
 
 More options -> UpdateController / LoginItemController
-Option–Command–N / More options -> AppearanceController -> osascript -> System Events
+Option–Command–N / More options -> AppearanceController -> SystemAppearanceClient -> System Events
 --status -> distributed notification -> running app snapshot -> JSON response
 ```
 
@@ -124,17 +125,23 @@ checking is off. The version row is disabled deliberately because it has no acti
 `AppearanceShortcut` registers the physical N key with Option and Command through
 Carbon's `RegisterEventHotKey`. Exclusive registration reports conflicts rather
 than sharing the key with another app. The application event handler accepts only
-its own identifier and key-release event, giving one action per held gesture.
+its own identifier, starts the action on key press and rearms on release. Repeated
+press events while held are ignored, giving one action per gesture without waiting
+for the user to release N.
 Registration starts only on normal launches and is removed on application exit.
 It does not monitor general keyboard input or require Accessibility/Input Monitoring.
 The menu action deliberately has no separate AppKit key equivalent, avoiding a
 second toggle from the same gesture while the app is active.
 
-`AppearanceController` allows one request at a time and runs Apple's fixed
-`/usr/bin/osascript` executable in a detached task. Its constant script asks
-System Events to invert `appearance preferences.dark mode` and reads the property
-back before reporting success. Apple events have a 15-second timeout. No shell,
-downloaded code, private appearance API or preference-file edit is used.
+`AppearanceController` allows one request at a time and runs `SystemAppearanceClient`
+in a detached task. The client uses Foundation's public `NSAppleEventDescriptor`
+API to read, set and verify `appearance preferences.dark mode` in three Apple events.
+Property codes come from System Events' scripting dictionary. Each event has a
+15-second timeout; descriptors stay inside the worker so synchronous replies do
+not block AppKit. If System Events has exited while idle, the controller launches
+the system app without activating it, only on an explicit user action. No shell,
+AppleScript interpreter, persistent helper, downloaded code, private appearance
+API or preference-file edit is used.
 Automation denial produces recovery instructions; other failures show a native
 alert. The app's Info.plist includes `NSAppleEventsUsageDescription`, and macOS
 requests permission only when a user invokes the action. Diagnostics and smoke
@@ -391,10 +398,14 @@ It verifies post-read metadata and the existing state JSON representation. These
 tests do not establish private CoreBrightness compatibility on other macOS versions.
 
 `AppearanceTests` exercises failure recovery and overlapping requests with an
-injected runner. It also registers the real shortcut, verifies exclusive conflicts,
-dispatches synthetic Carbon release events and checks unregister/re-register
-behavior. If an external app already owns the key, it checks the explicit error
-instead. These are not physical keyboard or Automation-permission continuity tests.
+injected runner. It registers a separate Option–Command–F20 test key so the
+installed app can keep Option–Command–N, verifies exclusive conflicts, and
+dispatches synthetic Carbon press/release events. It checks immediate press
+delivery, repeat suppression, rearming and unregister/re-register behavior.
+`SystemAppearanceClientTests` verifies the target/property path, get/set/readback
+sequence, both toggle directions, invalid/missing state, failed sets and Automation
+denials through an injected event transport. These are not physical keyboard,
+visual transition timing or Automation-permission continuity tests.
 
 ## Privacy
 

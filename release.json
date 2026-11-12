@@ -1,6 +1,6 @@
 {
-  "version": "0.6.12",
-  "build": "22",
+  "version": "0.6.13",
+  "build": "23",
   "id": "display-dials",
   "feedURL": "https://vitalyterenin.github.io/display-dials/appcast.xml",
   "downloadURL": "https://github.com/vitalyterenin/display-dials/releases/latest/download/DisplayDials.dmg",
