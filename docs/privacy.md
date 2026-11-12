@@ -10,9 +10,10 @@ status command uses local distributed notifications; it does not contact a serve
 
 Option–Command–N registers one global shortcut using macOS hot-key registration;
 the app does not monitor or record general keyboard input. Switching light/dark
-appearance runs Apple's local `osascript` tool against System Events and requires
+appearance sends local Apple events directly to System Events and requires
 Automation permission. It reads and changes only the appearance's `dark mode`
-property. This permission is requested only when you invoke the action.
+property. This permission is requested only when you invoke the action. No
+AppleScript interpreter or persistent helper process is used.
 
 Sparkle requests the signed update feed from this repository's GitHub Pages site
 and downloads updates from its GitHub Releases. Automatic update checks and

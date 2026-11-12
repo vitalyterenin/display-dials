@@ -49,8 +49,9 @@ Display Dials has no brightness adjustment, per-monitor settings or custom sched
 
 Press **Option–Command–N (⌥⌘N)** to toggle the system light/dark appearance while
 Display Dials is running, including when its panel is closed or another app is
-active. The physical N key works with other keyboard layouts too. Holding the
-key switches once on release; overlapping requests during a change are ignored.
+active. The physical N key works with other keyboard layouts too. Switching starts
+on key press; holding the key does not repeat it. Overlapping requests during a
+change are ignored.
 You can also choose **More options (…) > Toggle Light / Dark Appearance**.
 This changes macOS appearance independently of Night Shift.
 

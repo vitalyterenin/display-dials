@@ -7,15 +7,21 @@ final class AppearanceShortcut {
     private var hotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
     private var action: (() -> Void)?
+    private var isPressed = false
+    private let keyCode: UInt32
     private(set) var registrationError: OSStatus?
     var isRegistered: Bool { hotKey != nil }
+
+    // Tests use a separate key so the installed app can keep Option–Command–N.
+    init(keyCode: UInt32 = UInt32(kVK_ANSI_N)) { self.keyCode = keyCode }
 
     func start(action: @escaping () -> Void) {
         guard !isRegistered else { return }
         self.action = action
-        // Release fires once per gesture, including when the key is held down.
-        var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
-                                  eventKind: UInt32(kEventHotKeyReleased))
+        // Act on press immediately; release rearms the shortcut without key-repeat toggles.
+        let events = [kEventHotKeyPressed, kEventHotKeyReleased].map {
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32($0))
+        }
         let result = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
             guard let event, let context else { return OSStatus(eventNotHandledErr) }
             var identifier = EventHotKeyID()
@@ -26,16 +32,22 @@ final class AppearanceShortcut {
                 guard identifier.signature == AppearanceShortcut.signature, identifier.id == 1 else {
                     return OSStatus(eventNotHandledErr)
                 }
-                Unmanaged<AppearanceShortcut>.fromOpaque(context).takeUnretainedValue().action?()
+                let shortcut = Unmanaged<AppearanceShortcut>.fromOpaque(context).takeUnretainedValue()
+                if GetEventKind(event) == UInt32(kEventHotKeyReleased) {
+                    shortcut.isPressed = false
+                } else if !shortcut.isPressed {
+                    shortcut.isPressed = true
+                    shortcut.action?()
+                }
                 return noErr
             }
-        }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        }, events.count, events, Unmanaged.passUnretained(self).toOpaque(), &handler)
         guard result == noErr else {
             registrationError = result
             self.action = nil
             return
         }
-        let registration = RegisterEventHotKey(UInt32(kVK_ANSI_N), UInt32(optionKey | cmdKey),
+        let registration = RegisterEventHotKey(keyCode, UInt32(optionKey | cmdKey),
             EventHotKeyID(signature: Self.signature, id: 1), GetApplicationEventTarget(),
             OptionBits(kEventHotKeyExclusive), &hotKey)
         if registration != noErr {
@@ -52,5 +64,6 @@ final class AppearanceShortcut {
         hotKey = nil
         handler = nil
         action = nil
+        isPressed = false
     }
 }

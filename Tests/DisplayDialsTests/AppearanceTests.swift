@@ -60,25 +60,31 @@ struct AppearanceTests {
 
     @Test func hotKeyDispatchFiltersEventsAndReleasesRegistration() throws {
         _ = NSApplication.shared
-        let shortcut = AppearanceShortcut()
+        let shortcut = AppearanceShortcut(keyCode: UInt32(kVK_F20))
         var calls = 0
         shortcut.start { calls += 1 }
         defer { shortcut.stop() }
-        // A separate running copy may own the real key, so a conflict must be explicit.
-        guard shortcut.isRegistered else {
-            #expect(shortcut.registrationError != nil)
-            return
-        }
+        try #require(shortcut.isRegistered)
         #expect(shortcut.registrationError == nil)
-        let conflicting = AppearanceShortcut()
+        let conflicting = AppearanceShortcut(keyCode: UInt32(kVK_F20))
         conflicting.start { calls += 1000 }
         defer { conflicting.stop() }
         #expect(!conflicting.isRegistered)
         #expect(conflicting.registrationError != nil)
         shortcut.start { calls += 100 }
-        for (signature, expectedCalls) in [(OSType(0), 0), (OSType(0x44446170), 1)] {
+        let events = [
+            (OSType(0), kEventHotKeyPressed, 0),
+            (OSType(0x44446170), kEventHotKeyReleased, 0),
+            (OSType(0x44446170), kEventHotKeyPressed, 1),
+            (OSType(0x44446170), kEventHotKeyPressed, 1),
+            (OSType(0), kEventHotKeyReleased, 1),
+            (OSType(0x44446170), kEventHotKeyPressed, 1),
+            (OSType(0x44446170), kEventHotKeyReleased, 1),
+            (OSType(0x44446170), kEventHotKeyPressed, 2)
+        ]
+        for (signature, kind, expectedCalls) in events {
             var event: EventRef?
-            #expect(CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kEventHotKeyReleased),
+            #expect(CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kind),
                 0, 0, &event) == noErr)
             let released = try #require(event)
             defer { ReleaseEvent(released) }
